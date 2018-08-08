@@ -1,0 +1,760 @@
+
+
+<!DOCTYPE html>
+<!--[if IE 8]><html class="no-js lt-ie9" lang="en" > <![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en" > <!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <title>medaka.inference &mdash; Medaka 0.3.0 documentation</title>
+  
+
+  
+  
+  
+  
+
+  
+
+  
+  
+    
+
+  
+
+  <link rel="stylesheet" href="../../_static/css/theme.css" type="text/css" />
+  <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+
+  
+  <script src="../../_static/js/modernizr.min.js"></script>
+
+</head>
+
+<body class="wy-body-for-nav">
+
+   
+  <div class="wy-grid-for-nav">
+
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search">
+          
+
+          
+            <a href="../../index.html" class="icon icon-home"> Medaka
+          
+
+          
+          </a>
+
+          
+            
+            
+              <div class="version">
+                0.3.0
+              </div>
+            
+          
+
+          
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+
+          
+        </div>
+
+        <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+          
+            
+            
+              
+            
+            
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../benchmarks.html">Benchmarks</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../walkthrough.html">Walkthrough</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../development.html">Development</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../future.html">History and Future Directions</a></li>
+</ul>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../medaka.html">medaka package</a></li>
+</ul>
+
+            
+          
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" aria-label="top navigation">
+        
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">Medaka</a>
+        
+      </nav>
+
+
+      <div class="wy-nav-content">
+        
+        <div class="rst-content">
+        
+          
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div role="navigation" aria-label="breadcrumbs navigation">
+
+  <ul class="wy-breadcrumbs">
+    
+      <li><a href="../../index.html">Docs</a> &raquo;</li>
+        
+          <li><a href="../index.html">Module code</a> &raquo;</li>
+        
+      <li>medaka.inference</li>
+    
+    
+      <li class="wy-breadcrumbs-aside">
+        
+      </li>
+    
+  </ul>
+
+  
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+            
+  <h1>Source code for medaka.inference</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span> <span class="nn">glob</span>
+<span class="kn">import</span> <span class="nn">h5py</span>
+<span class="kn">import</span> <span class="nn">inspect</span>
+<span class="kn">import</span> <span class="nn">itertools</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">pysam</span>
+<span class="kn">from</span> <span class="nn">collections</span> <span class="k">import</span> <span class="n">Counter</span>
+<span class="kn">from</span> <span class="nn">functools</span> <span class="k">import</span> <span class="n">partial</span>
+<span class="kn">from</span> <span class="nn">timeit</span> <span class="k">import</span> <span class="n">default_timer</span> <span class="k">as</span> <span class="n">now</span>
+
+<span class="kn">from</span> <span class="nn">keras</span> <span class="k">import</span> <span class="n">backend</span> <span class="k">as</span> <span class="n">K</span>
+<span class="kn">from</span> <span class="nn">keras.models</span> <span class="k">import</span> <span class="n">Sequential</span><span class="p">,</span> <span class="n">load_model</span>
+<span class="kn">from</span> <span class="nn">keras.layers</span> <span class="k">import</span> <span class="n">Dense</span><span class="p">,</span> <span class="n">GRU</span><span class="p">,</span> <span class="n">Dropout</span>
+<span class="kn">from</span> <span class="nn">keras.layers.wrappers</span> <span class="k">import</span> <span class="n">Bidirectional</span>
+<span class="kn">from</span> <span class="nn">keras.callbacks</span> <span class="k">import</span> <span class="n">ModelCheckpoint</span><span class="p">,</span> <span class="n">CSVLogger</span><span class="p">,</span> <span class="n">TensorBoard</span><span class="p">,</span> <span class="n">EarlyStopping</span>
+
+<span class="c1"># set some Tensorflow session options</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">from keras.backend.tensorflow_backend import set_session</span>
+<span class="sd">import tensorflow as tf</span>
+<span class="sd">config = tf.ConfigProto()</span>
+<span class="sd">config.gpu_options.per_process_gpu_memory_fraction = 0.3</span>
+<span class="sd">set_session(tf.Session(config=config))</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">logging</span>
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
+
+
+<span class="kn">from</span> <span class="nn">medaka.tview</span> <span class="k">import</span> <span class="n">_gap_</span><span class="p">,</span> <span class="n">load_pileup</span><span class="p">,</span> <span class="n">generate_pileup_chunks</span><span class="p">,</span> <span class="n">generate_training_chunks</span><span class="p">,</span> <span class="n">rechunk</span>
+<span class="kn">from</span> <span class="nn">medaka</span> <span class="k">import</span> <span class="n">features</span>
+<span class="kn">from</span> <span class="nn">medaka.common</span> <span class="k">import</span> <span class="p">(</span><span class="n">encode_sample_name</span><span class="p">,</span> <span class="n">_label_counts_path_</span><span class="p">,</span>
+                           <span class="n">_label_decod_path_</span><span class="p">,</span> <span class="n">chain_thread_safe</span><span class="p">,</span> <span class="n">decoding</span><span class="p">,</span>
+                           <span class="n">get_sample_index_from_files</span><span class="p">,</span> <span class="n">grouper</span><span class="p">,</span>
+                           <span class="n">load_sample_from_hdf</span><span class="p">,</span> <span class="n">load_yaml_data</span><span class="p">,</span>
+                           <span class="n">_model_opt_path_</span><span class="p">,</span> <span class="n">mkdir_p</span><span class="p">,</span> <span class="n">Sample</span><span class="p">,</span> <span class="n">sample_to_x_y</span><span class="p">,</span>
+                           <span class="n">threadsafe_generator</span><span class="p">,</span> <span class="n">write_samples_to_hdf</span><span class="p">,</span>
+                           <span class="n">write_sample_to_hdf</span><span class="p">,</span> <span class="n">write_yaml_data</span><span class="p">,</span>
+                           <span class="n">yield_from_feature_files</span><span class="p">,</span> <span class="n">load_from_feature_files</span><span class="p">,</span>
+                           <span class="n">gen_train_batch</span><span class="p">,</span> <span class="n">_label_batches_path_</span><span class="p">,</span> <span class="n">_feature_batches_path_</span><span class="p">,</span>
+                           <span class="n">yield_batches_from_hdfs</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="bam_pileup_to_features_hdf"><a class="viewcode-back" href="../../medaka.html#medaka.inference.bam_pileup_to_features_hdf">[docs]</a><span class="k">def</span> <span class="nf">bam_pileup_to_features_hdf</span><span class="p">(</span><span class="n">hdf</span><span class="p">,</span> <span class="n">bams</span><span class="p">,</span> <span class="n">ref_fasta</span><span class="p">,</span> <span class="n">ref_name</span><span class="p">:</span><span class="nb">str</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">start</span><span class="p">:</span><span class="nb">int</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">end</span><span class="p">:</span><span class="nb">int</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">truth_bam</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                      <span class="n">chunk_len</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span> <span class="n">overlap</span><span class="o">=</span><span class="mi">100</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Create an .hdf file of features for training or inference.</span>
+
+<span class="sd">    :param hdf: output .hdf file (will be overwritten).</span>
+<span class="sd">    :param bams: iterable of input .bam files.</span>
+<span class="sd">    :param ref_fasta: input .fasta file.</span>
+<span class="sd">    :param ref_name: name of reference within .bam to parse.</span>
+<span class="sd">    :param start: start reference coordinate.</span>
+<span class="sd">    :param end: end reference coordinate. If `None` the full extent of</span>
+<span class="sd">        the reference will be parsed.</span>
+<span class="sd">    :param truth_bam: .bam file of truth aligned to ref to generate labels.</span>
+<span class="sd">    :param chunk_len: int, chunk length in pileup columns.</span>
+<span class="sd">    :param overlap: int, overlap of adjacent chunks in pileup columns.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">ref_name</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="c1"># use all references</span>
+        <span class="n">refs</span> <span class="o">=</span> <span class="n">pysam</span><span class="o">.</span><span class="n">FastaFile</span><span class="p">(</span><span class="n">ref_fasta</span><span class="p">)</span><span class="o">.</span><span class="n">references</span>
+        <span class="k">assert</span> <span class="n">end</span> <span class="o">==</span> <span class="kc">None</span>
+        <span class="k">assert</span> <span class="n">start</span> <span class="o">==</span> <span class="mi">0</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">refs</span> <span class="o">=</span> <span class="p">[</span><span class="n">ref_name</span><span class="p">,]</span>
+
+    <span class="k">for</span> <span class="n">ref</span> <span class="ow">in</span> <span class="n">refs</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">truth_bam</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">gen</span> <span class="o">=</span> <span class="n">generate_training_chunks</span><span class="p">(</span><span class="n">truth_bam</span><span class="p">,</span> <span class="n">bams</span><span class="p">,</span> <span class="n">ref_fasta</span><span class="p">,</span> <span class="n">ref_name</span><span class="o">=</span><span class="n">ref</span><span class="p">,</span>
+                                            <span class="n">start</span><span class="o">=</span><span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="n">end</span><span class="p">,</span> <span class="n">chunk_len</span><span class="o">=</span><span class="mi">10</span><span class="o">*</span><span class="n">chunk_len</span><span class="p">,</span> <span class="n">overlap</span><span class="o">=</span><span class="mi">10</span><span class="o">*</span><span class="n">overlap</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">gen</span> <span class="o">=</span> <span class="n">generate_pileup_chunks</span><span class="p">(</span><span class="n">bams</span><span class="p">,</span> <span class="n">ref_fasta</span><span class="p">,</span> <span class="n">ref_name</span><span class="o">=</span><span class="n">ref</span><span class="p">,</span> <span class="n">start</span><span class="o">=</span><span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="n">end</span><span class="p">,</span>
+                                            <span class="n">chunk_len</span><span class="o">=</span><span class="mi">10</span><span class="o">*</span><span class="n">chunk_len</span><span class="p">,</span> <span class="n">overlap</span><span class="o">=</span><span class="mi">5</span><span class="o">*</span><span class="n">overlap</span><span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Processing reference </span><span class="si">{}</span><span class="s2">.&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">ref</span><span class="p">))</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="n">generate_samples</span><span class="p">(</span><span class="n">rechunk</span><span class="p">(</span><span class="n">gen</span><span class="p">,</span> <span class="n">chunk_size</span><span class="o">=</span><span class="n">chunk_len</span><span class="p">,</span> <span class="n">overlap</span><span class="o">=</span><span class="n">overlap</span><span class="p">))</span>
+        <span class="n">write_samples_to_hdf</span><span class="p">(</span><span class="n">hdf</span><span class="p">,</span> <span class="n">data</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="weighted_categorical_crossentropy"><a class="viewcode-back" href="../../medaka.html#medaka.inference.weighted_categorical_crossentropy">[docs]</a><span class="k">def</span> <span class="nf">weighted_categorical_crossentropy</span><span class="p">(</span><span class="n">weights</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A weighted version of keras.objectives.categorical_crossentropy</span>
+<span class="sd">    @url: https://gist.github.com/wassname/ce364fddfc8a025bfab4348cf5de852d</span>
+<span class="sd">    @author: wassname</span>
+
+<span class="sd">    Variables:</span>
+<span class="sd">        weights: numpy array of shape (C,) where C is the number of classes</span>
+
+<span class="sd">    Usage:</span>
+<span class="sd">        weights = np.array([0.5,2,10]) # Class one at 0.5, class 2 twice the normal weights, class 3 10x.</span>
+<span class="sd">        loss = weighted_categorical_crossentropy(weights)</span>
+<span class="sd">        model.compile(loss=loss,optimizer=&#39;adam&#39;)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">weights</span> <span class="o">=</span> <span class="n">K</span><span class="o">.</span><span class="n">variable</span><span class="p">(</span><span class="n">weights</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">loss</span><span class="p">(</span><span class="n">y_true</span><span class="p">,</span> <span class="n">y_pred</span><span class="p">):</span>
+        <span class="c1"># scale predictions so that the class probas of each sample sum to 1</span>
+        <span class="n">y_pred</span> <span class="o">/=</span> <span class="n">K</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">y_pred</span><span class="p">,</span> <span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span> <span class="n">keepdims</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="c1"># clip to prevent NaN&#39;s and Inf&#39;s</span>
+        <span class="n">y_pred</span> <span class="o">=</span> <span class="n">K</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">y_pred</span><span class="p">,</span> <span class="n">K</span><span class="o">.</span><span class="n">epsilon</span><span class="p">(),</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">K</span><span class="o">.</span><span class="n">epsilon</span><span class="p">())</span>
+        <span class="c1"># calc</span>
+        <span class="n">loss</span> <span class="o">=</span> <span class="n">y_true</span> <span class="o">*</span> <span class="n">K</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">y_pred</span><span class="p">)</span> <span class="o">*</span> <span class="n">weights</span>
+        <span class="n">loss</span> <span class="o">=</span> <span class="o">-</span><span class="n">K</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">loss</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">loss</span>
+
+    <span class="k">return</span> <span class="n">loss</span></div>
+
+
+
+<div class="viewcode-block" id="generate_samples"><a class="viewcode-back" href="../../medaka.html#medaka.inference.generate_samples">[docs]</a><span class="nd">@threadsafe_generator</span>
+<span class="k">def</span> <span class="nf">generate_samples</span><span class="p">(</span><span class="n">pileup_gen</span><span class="p">,</span>
+                     <span class="n">coverage_filter</span><span class="o">=</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">features</span><span class="o">.</span><span class="n">alphabet_filter</span><span class="p">(</span><span class="n">features</span><span class="o">.</span><span class="n">depth_filter</span><span class="p">(</span><span class="n">x</span><span class="p">)),</span>
+                     <span class="n">feature_func</span><span class="o">=</span><span class="n">features</span><span class="o">.</span><span class="n">counts</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Generate data samples from a pileup generator</span>
+
+<span class="sd">    :param pileup_gen: generator of (pileups, labels) tuples;</span>
+<span class="sd">        pileups: list of `Pileup` objects</span>
+<span class="sd">        labels: np.array of labels or None.</span>
+<span class="sd">    :param feature_func: function to generate features</span>
+
+<span class="sd">    :yields `Sample` objects.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">coverage_filter</span><span class="p">(</span><span class="n">pileup_gen</span><span class="p">):</span>
+        <span class="n">pos</span> <span class="o">=</span> <span class="n">c</span><span class="o">.</span><span class="n">pileups</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">positions</span>
+        <span class="n">ref_name</span> <span class="o">=</span> <span class="n">c</span><span class="o">.</span><span class="n">pileups</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">ref_name</span>
+        <span class="n">sample</span> <span class="o">=</span> <span class="n">Sample</span><span class="p">(</span><span class="n">ref_name</span><span class="o">=</span><span class="n">ref_name</span><span class="p">,</span>
+                        <span class="n">features</span><span class="o">=</span><span class="n">feature_func</span><span class="p">(</span><span class="n">c</span><span class="o">.</span><span class="n">pileups</span><span class="p">),</span>
+                        <span class="n">labels</span><span class="o">=</span><span class="n">c</span><span class="o">.</span><span class="n">labels</span><span class="p">,</span>
+                        <span class="n">ref_seq</span><span class="o">=</span><span class="n">c</span><span class="o">.</span><span class="n">ref_seq</span><span class="p">,</span>
+                        <span class="n">positions</span><span class="o">=</span><span class="n">pos</span><span class="p">,</span> <span class="n">label_probs</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
+        <span class="k">yield</span> <span class="n">sample</span></div>
+
+
+<div class="viewcode-block" id="build_model"><a class="viewcode-back" href="../../medaka.html#medaka.inference.build_model">[docs]</a><span class="k">def</span> <span class="nf">build_model</span><span class="p">(</span><span class="n">chunk_size</span><span class="p">,</span> <span class="n">feature_len</span><span class="p">,</span> <span class="n">num_classes</span><span class="p">,</span> <span class="n">gru_size</span><span class="o">=</span><span class="mi">128</span><span class="p">,</span> <span class="n">input_dropout</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span>
+                <span class="n">inter_layer_dropout</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">recurrent_dropout</span><span class="o">=</span><span class="mf">0.0</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Builds a bidirectional GRU model</span>
+<span class="sd">    :param chunk_size: int, number of pileup columns in a sample.</span>
+<span class="sd">    :param feature_len: int, number of features for each pileup column.</span>
+<span class="sd">    :param num_classes: int, number of output class labels.</span>
+<span class="sd">    :param gru_size: int, size of each GRU layer.</span>
+<span class="sd">    :param input_dropout: float, fraction of the input feature-units to drop.</span>
+<span class="sd">    :param inter_layer_dropout: float, fraction of units to drop between layers.</span>
+<span class="sd">    :param recurrent_dropout: float, fraction of units to drop within the recurrent state.</span>
+<span class="sd">    :returns: `keras.models.Sequential` object.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">model</span> <span class="o">=</span> <span class="n">Sequential</span><span class="p">()</span>
+
+    <span class="n">gru1</span> <span class="o">=</span> <span class="n">GRU</span><span class="p">(</span><span class="n">gru_size</span><span class="p">,</span> <span class="n">activation</span><span class="o">=</span><span class="s1">&#39;tanh&#39;</span><span class="p">,</span> <span class="n">return_sequences</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s1">&#39;gru1&#39;</span><span class="p">,</span>
+               <span class="n">dropout</span><span class="o">=</span><span class="n">input_dropout</span><span class="p">,</span> <span class="n">recurrent_dropout</span><span class="o">=</span><span class="n">recurrent_dropout</span><span class="p">)</span>
+    <span class="n">gru2</span> <span class="o">=</span> <span class="n">GRU</span><span class="p">(</span><span class="n">gru_size</span><span class="p">,</span> <span class="n">activation</span><span class="o">=</span><span class="s1">&#39;tanh&#39;</span><span class="p">,</span> <span class="n">return_sequences</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s1">&#39;gru2&#39;</span><span class="p">,</span>
+               <span class="n">dropout</span><span class="o">=</span><span class="n">inter_layer_dropout</span><span class="p">,</span> <span class="n">recurrent_dropout</span><span class="o">=</span><span class="n">recurrent_dropout</span><span class="p">)</span>
+
+    <span class="c1"># Bidirectional wrapper takes a copy of the first argument and reverses</span>
+    <span class="c1">#   the direction. Weights are independent between components.</span>
+    <span class="n">model</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">Bidirectional</span><span class="p">(</span><span class="n">gru1</span><span class="p">,</span> <span class="n">input_shape</span><span class="o">=</span><span class="p">(</span><span class="n">chunk_size</span><span class="p">,</span> <span class="n">feature_len</span><span class="p">)))</span>
+
+    <span class="n">model</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">Bidirectional</span><span class="p">(</span><span class="n">gru2</span><span class="p">,</span> <span class="n">input_shape</span><span class="o">=</span><span class="p">(</span><span class="n">chunk_size</span><span class="p">,</span> <span class="n">feature_len</span><span class="p">)))</span>
+
+    <span class="k">if</span> <span class="n">inter_layer_dropout</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">model</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">Dropout</span><span class="p">(</span><span class="n">inter_layer_dropout</span><span class="p">))</span>
+
+    <span class="n">model</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">Dense</span><span class="p">(</span><span class="n">num_classes</span><span class="p">,</span> <span class="n">activation</span><span class="o">=</span><span class="s1">&#39;softmax&#39;</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s1">&#39;classify&#39;</span><span class="p">))</span>
+
+    <span class="k">return</span> <span class="n">model</span></div>
+
+
+<div class="viewcode-block" id="qscore"><a class="viewcode-back" href="../../medaka.html#medaka.inference.qscore">[docs]</a><span class="k">def</span> <span class="nf">qscore</span><span class="p">(</span><span class="n">y_true</span><span class="p">,</span> <span class="n">y_pred</span><span class="p">):</span>
+    <span class="n">error</span> <span class="o">=</span> <span class="n">K</span><span class="o">.</span><span class="n">cast</span><span class="p">(</span><span class="n">K</span><span class="o">.</span><span class="n">not_equal</span><span class="p">(</span>
+        <span class="n">K</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">y_true</span><span class="p">,</span> <span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">),</span> <span class="n">K</span><span class="o">.</span><span class="n">cast</span><span class="p">(</span><span class="n">K</span><span class="o">.</span><span class="n">argmax</span><span class="p">(</span><span class="n">y_pred</span><span class="p">,</span> <span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">),</span> <span class="n">K</span><span class="o">.</span><span class="n">floatx</span><span class="p">())),</span>
+        <span class="n">K</span><span class="o">.</span><span class="n">floatx</span><span class="p">()</span>
+    <span class="p">)</span>
+    <span class="n">error</span> <span class="o">=</span> <span class="n">K</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">error</span><span class="p">)</span> <span class="o">/</span> <span class="n">K</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">K</span><span class="o">.</span><span class="n">ones_like</span><span class="p">(</span><span class="n">error</span><span class="p">))</span>
+    <span class="k">return</span> <span class="o">-</span><span class="mf">10.0</span> <span class="o">*</span> <span class="mf">0.434294481</span> <span class="o">*</span> <span class="n">K</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">error</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="run_training"><a class="viewcode-back" href="../../medaka.html#medaka.inference.run_training">[docs]</a><span class="k">def</span> <span class="nf">run_training</span><span class="p">(</span><span class="n">train_name</span><span class="p">,</span> <span class="n">sample_gen</span><span class="p">,</span> <span class="n">valid_gen</span><span class="p">,</span> <span class="n">n_batch_train</span><span class="p">,</span> <span class="n">n_batch_valid</span><span class="p">,</span> <span class="n">label_decoding</span><span class="p">,</span>
+                 <span class="n">timesteps</span><span class="p">,</span> <span class="n">feat_dim</span><span class="p">,</span> <span class="n">model_fp</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">epochs</span><span class="o">=</span><span class="mi">5000</span><span class="p">,</span> <span class="n">batch_size</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">class_weight</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Run training.&quot;&quot;&quot;</span>
+
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Got </span><span class="si">{}</span><span class="s2"> batches for training, </span><span class="si">{}</span><span class="s2"> for validation.&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">n_batch_train</span><span class="p">,</span> <span class="n">n_batch_valid</span><span class="p">))</span>
+
+    <span class="n">num_classes</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">label_decoding</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">model_fp</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">model_kwargs</span> <span class="o">=</span> <span class="p">{</span> <span class="n">k</span><span class="p">:</span><span class="n">v</span><span class="o">.</span><span class="n">default</span> <span class="k">for</span> <span class="p">(</span><span class="n">k</span><span class="p">,</span><span class="n">v</span><span class="p">)</span> <span class="ow">in</span> <span class="n">inspect</span><span class="o">.</span><span class="n">signature</span><span class="p">(</span><span class="n">build_model</span><span class="p">)</span><span class="o">.</span><span class="n">parameters</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+                         <span class="k">if</span> <span class="n">v</span><span class="o">.</span><span class="n">default</span> <span class="ow">is</span> <span class="ow">not</span> <span class="n">inspect</span><span class="o">.</span><span class="n">Parameter</span><span class="o">.</span><span class="n">empty</span><span class="p">}</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">model_kwargs</span> <span class="o">=</span> <span class="n">load_yaml_data</span><span class="p">(</span><span class="n">model_fp</span><span class="p">,</span> <span class="n">_model_opt_path_</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="n">model_kwargs</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+
+    <span class="n">opt_str</span> <span class="o">=</span> <span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="s1">&#39;</span><span class="si">{}</span><span class="s1">: </span><span class="si">{}</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">k</span><span class="p">,</span><span class="n">v</span><span class="p">)</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">model_kwargs</span><span class="o">.</span><span class="n">items</span><span class="p">()])</span>
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s1">&#39;Building model with: </span><span class="se">\n</span><span class="si">{}</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">opt_str</span><span class="p">))</span>
+    <span class="n">model</span> <span class="o">=</span> <span class="n">build_model</span><span class="p">(</span><span class="n">timesteps</span><span class="p">,</span> <span class="n">feat_dim</span><span class="p">,</span> <span class="n">num_classes</span><span class="p">,</span> <span class="o">**</span><span class="n">model_kwargs</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">model_fp</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">splitext</span><span class="p">(</span><span class="n">model_fp</span><span class="p">)[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">!=</span> <span class="s1">&#39;.yml&#39;</span><span class="p">:</span>
+        <span class="n">old_model</span> <span class="o">=</span> <span class="n">load_model</span><span class="p">(</span><span class="n">model_fp</span><span class="p">,</span> <span class="n">custom_objects</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;qscore&#39;</span><span class="p">:</span> <span class="n">qscore</span><span class="p">})</span>
+        <span class="n">old_model_feat_dim</span> <span class="o">=</span> <span class="n">old_model</span><span class="o">.</span><span class="n">get_input_shape_at</span><span class="p">(</span><span class="mi">0</span><span class="p">)[</span><span class="mi">2</span><span class="p">]</span>
+        <span class="k">assert</span> <span class="n">old_model_feat_dim</span> <span class="o">==</span> <span class="n">feat_dim</span>
+        <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Loading weights from </span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">model_fp</span><span class="p">))</span>
+        <span class="n">model</span><span class="o">.</span><span class="n">load_weights</span><span class="p">(</span><span class="n">model_fp</span><span class="p">)</span>
+
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;feat_dim: </span><span class="si">{}</span><span class="s2">, timesteps: </span><span class="si">{}</span><span class="s2">, num_classes: </span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">feat_dim</span><span class="p">,</span> <span class="n">timesteps</span><span class="p">,</span> <span class="n">num_classes</span><span class="p">))</span>
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">summary</span><span class="p">()))</span>
+
+    <span class="n">model_details</span> <span class="o">=</span> <span class="p">{</span><span class="n">_label_decod_path_</span><span class="p">:</span> <span class="n">label_decoding</span><span class="p">,</span>
+                     <span class="n">_model_opt_path_</span><span class="p">:</span> <span class="n">model_kwargs</span><span class="p">}</span>
+    <span class="n">write_yaml_data</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">train_name</span><span class="p">,</span> <span class="s1">&#39;training_config.yml&#39;</span><span class="p">),</span> <span class="n">model_details</span><span class="p">)</span>
+
+    <span class="n">opts</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">verbose</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">save_best_only</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s1">&#39;max&#39;</span><span class="p">)</span>
+    <span class="n">callbacks</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="c1"># Best model according to training set accuracy</span>
+        <span class="n">ModelCheckpoint</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">train_name</span><span class="p">,</span> <span class="s1">&#39;model.best.hdf5&#39;</span><span class="p">),</span>
+                        <span class="n">monitor</span><span class="o">=</span><span class="s1">&#39;acc&#39;</span><span class="p">,</span> <span class="o">**</span><span class="n">opts</span><span class="p">),</span>
+        <span class="c1"># Best model according to validation set accuracy</span>
+        <span class="n">ModelCheckpoint</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">train_name</span><span class="p">,</span> <span class="s1">&#39;model.best.val.hdf5&#39;</span><span class="p">),</span>
+                        <span class="n">monitor</span><span class="o">=</span><span class="s1">&#39;val_acc&#39;</span><span class="p">,</span> <span class="o">**</span><span class="n">opts</span><span class="p">),</span>
+        <span class="c1"># Best model according to validation set qscore</span>
+        <span class="n">ModelCheckpoint</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">train_name</span><span class="p">,</span> <span class="s1">&#39;model.best.val.qscore.hdf5&#39;</span><span class="p">),</span>
+                        <span class="n">monitor</span><span class="o">=</span><span class="s1">&#39;val_qscore&#39;</span><span class="p">,</span> <span class="o">**</span><span class="n">opts</span><span class="p">),</span>
+        <span class="c1"># Checkpoints when training set accuracy improves</span>
+        <span class="n">ModelCheckpoint</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">train_name</span><span class="p">,</span> <span class="s1">&#39;model-improvement-</span><span class="si">{epoch:02d}</span><span class="s1">-</span><span class="si">{acc:.2f}</span><span class="s1">.hdf5&#39;</span><span class="p">),</span>
+                        <span class="n">monitor</span><span class="o">=</span><span class="s1">&#39;acc&#39;</span><span class="p">,</span> <span class="o">**</span><span class="n">opts</span><span class="p">),</span>
+        <span class="c1"># Stop when no improvement, patience is number of epochs to allow no improvement</span>
+        <span class="n">EarlyStopping</span><span class="p">(</span><span class="n">monitor</span><span class="o">=</span><span class="s1">&#39;val_loss&#39;</span><span class="p">,</span> <span class="n">patience</span><span class="o">=</span><span class="mi">20</span><span class="p">),</span>
+        <span class="c1"># Log of epoch stats</span>
+        <span class="n">CSVLogger</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">train_name</span><span class="p">,</span> <span class="s1">&#39;training.log&#39;</span><span class="p">)),</span>
+        <span class="c1"># Allow us to run tensorboard to see how things are going. Some</span>
+        <span class="c1">#   features require validation data, not clear why.</span>
+        <span class="c1">#TensorBoard(log_dir=os.path.join(train_name, &#39;logs&#39;),</span>
+        <span class="c1">#            histogram_freq=5, batch_size=100, write_graph=True,</span>
+        <span class="c1">#            write_grads=True, write_images=True)</span>
+    <span class="p">]</span>
+
+    <span class="k">if</span> <span class="n">class_weight</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">loss</span> <span class="o">=</span> <span class="n">weighted_categorical_crossentropy</span><span class="p">(</span><span class="n">class_weight</span><span class="p">)</span>
+        <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Using weighted_categorical_crossentropy loss function&quot;</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">loss</span> <span class="o">=</span> <span class="s1">&#39;sparse_categorical_crossentropy&#39;</span>
+        <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Using </span><span class="si">{}</span><span class="s2"> loss function&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">loss</span><span class="p">))</span>
+
+    <span class="n">model</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span>
+       <span class="n">loss</span><span class="o">=</span><span class="n">loss</span><span class="p">,</span>
+       <span class="n">optimizer</span><span class="o">=</span><span class="s1">&#39;rmsprop&#39;</span><span class="p">,</span>
+       <span class="n">metrics</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;accuracy&#39;</span><span class="p">,</span> <span class="n">qscore</span><span class="p">],</span>
+    <span class="p">)</span>
+    <span class="c1"># fit generator</span>
+    <span class="n">model</span><span class="o">.</span><span class="n">fit_generator</span><span class="p">(</span>
+        <span class="n">sample_gen</span><span class="p">,</span> <span class="n">steps_per_epoch</span><span class="o">=</span><span class="n">n_batch_train</span><span class="p">,</span>
+        <span class="n">validation_data</span><span class="o">=</span><span class="n">valid_gen</span><span class="p">,</span> <span class="n">validation_steps</span><span class="o">=</span><span class="n">n_batch_valid</span><span class="p">,</span>
+        <span class="n">max_queue_size</span><span class="o">=</span><span class="mi">8</span><span class="p">,</span> <span class="n">workers</span><span class="o">=</span><span class="mi">8</span><span class="p">,</span> <span class="n">use_multiprocessing</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">epochs</span><span class="o">=</span><span class="n">epochs</span><span class="p">,</span>
+        <span class="n">callbacks</span><span class="o">=</span><span class="n">callbacks</span><span class="p">,</span>
+        <span class="n">class_weight</span><span class="o">=</span><span class="n">class_weight</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="c1"># append label_decoding and model building options to the hdf files</span>
+    <span class="k">for</span> <span class="n">hd5_model_path</span> <span class="ow">in</span> <span class="n">glob</span><span class="o">.</span><span class="n">glob</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">train_name</span><span class="p">,</span> <span class="s1">&#39;*.hdf5&#39;</span><span class="p">)):</span>
+            <span class="n">write_yaml_data</span><span class="p">(</span><span class="n">hd5_model_path</span><span class="p">,</span> <span class="n">model_details</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="run_prediction"><a class="viewcode-back" href="../../medaka.html#medaka.inference.run_prediction">[docs]</a><span class="k">def</span> <span class="nf">run_prediction</span><span class="p">(</span><span class="n">sample_gen</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">label_decoding</span><span class="p">,</span> <span class="n">output_file</span><span class="o">=</span><span class="s1">&#39;consensus_chunks.fa&#39;</span><span class="p">,</span>
+                   <span class="n">batch_size</span><span class="o">=</span><span class="mi">200</span><span class="p">,</span> <span class="n">predictions_file</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">n_samples</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Run inference.&quot;&quot;&quot;</span>
+
+    <span class="n">batches</span> <span class="o">=</span> <span class="n">grouper</span><span class="p">(</span><span class="n">sample_gen</span><span class="p">,</span> <span class="n">batch_size</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">predictions_file</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">pred_h5</span> <span class="o">=</span> <span class="n">h5py</span><span class="o">.</span><span class="n">File</span><span class="p">(</span><span class="n">predictions_file</span><span class="p">,</span> <span class="s1">&#39;w&#39;</span><span class="p">)</span>
+
+    <span class="n">first_batch</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="n">n_samples_done</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="c1"># write out contig name and position in fasta, ref_name:start-end</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">output_file</span><span class="p">,</span> <span class="s1">&#39;w&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">fasta</span><span class="p">:</span>
+        <span class="n">t0</span> <span class="o">=</span> <span class="n">now</span><span class="p">()</span>
+        <span class="n">tlast</span> <span class="o">=</span> <span class="n">t0</span>
+        <span class="k">for</span> <span class="n">data</span> <span class="ow">in</span> <span class="n">batches</span><span class="p">:</span>
+            <span class="n">x_data</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">stack</span><span class="p">((</span><span class="n">x</span><span class="o">.</span><span class="n">features</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">data</span><span class="p">))</span>
+
+            <span class="k">if</span> <span class="n">first_batch</span><span class="p">:</span>
+                <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s1">&#39;Updating model state with first batch&#39;</span><span class="p">)</span>
+                <span class="n">class_probs</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">predict</span><span class="p">(</span><span class="n">x_data</span><span class="p">,</span> <span class="n">batch_size</span><span class="o">=</span><span class="n">batch_size</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+                <span class="n">first_batch</span> <span class="o">=</span> <span class="kc">False</span>
+
+            <span class="n">class_probs</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">predict</span><span class="p">(</span><span class="n">x_data</span><span class="p">,</span> <span class="n">batch_size</span><span class="o">=</span><span class="n">batch_size</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+            <span class="n">n_samples_done</span> <span class="o">+=</span> <span class="n">x_data</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">t1</span> <span class="o">=</span> <span class="n">now</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">t1</span> <span class="o">-</span> <span class="n">tlast</span> <span class="o">&gt;</span> <span class="mi">10</span><span class="p">:</span>
+                <span class="n">tlast</span> <span class="o">=</span> <span class="n">t1</span>
+                <span class="k">if</span> <span class="n">n_samples</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>  <span class="c1"># we know how many samples we will be processing</span>
+                    <span class="n">msg</span> <span class="o">=</span> <span class="s1">&#39;</span><span class="si">{:.1%}</span><span class="s1"> Done (</span><span class="si">{}</span><span class="s1">/</span><span class="si">{}</span><span class="s1"> samples) in </span><span class="si">{:.1f}</span><span class="s1">s&#39;</span>
+                    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">n_samples_done</span> <span class="o">/</span> <span class="n">n_samples</span><span class="p">,</span> <span class="n">n_samples_done</span><span class="p">,</span> <span class="n">n_samples</span><span class="p">,</span> <span class="n">t1</span> <span class="o">-</span> <span class="n">t0</span><span class="p">))</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s1">&#39;Done </span><span class="si">{}</span><span class="s1"> samples in </span><span class="si">{:.1f}</span><span class="s1">s&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">n_samples_done</span><span class="p">,</span> <span class="n">t1</span> <span class="o">-</span> <span class="n">t0</span><span class="p">,</span> <span class="n">x_data</span><span class="o">.</span><span class="n">shape</span><span class="p">))</span>
+
+
+            <span class="n">count</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="n">best</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argmax</span><span class="p">(</span><span class="n">class_probs</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+            <span class="c1"># write out contig name and position in fasta, ref_name:start-end</span>
+            <span class="k">for</span> <span class="n">sample</span><span class="p">,</span> <span class="n">prob</span><span class="p">,</span> <span class="n">pred</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">class_probs</span><span class="p">,</span> <span class="n">best</span><span class="p">):</span>
+                <span class="n">seq</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">label_decoding</span><span class="p">[</span><span class="n">x</span><span class="p">]</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">pred</span><span class="p">)</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">_gap_</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">)</span>
+                <span class="n">key</span> <span class="o">=</span> <span class="n">encode_sample_name</span><span class="p">(</span><span class="n">sample</span><span class="p">)</span>
+                <span class="n">fasta</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">&quot;&gt;</span><span class="si">{}</span><span class="se">\n</span><span class="si">{}</span><span class="se">\n</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">seq</span><span class="p">))</span>
+                <span class="c1"># write out positions and predictions for later analysis</span>
+                <span class="k">if</span> <span class="n">predictions_file</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="n">sample_d</span> <span class="o">=</span> <span class="n">sample</span><span class="o">.</span><span class="n">_asdict</span><span class="p">()</span>
+                    <span class="n">sample_d</span><span class="p">[</span><span class="s1">&#39;label_probs&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">prob</span>
+                    <span class="n">sample_d</span><span class="p">[</span><span class="s1">&#39;features&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>  <span class="c1"># to keep file sizes down</span>
+                    <span class="n">write_sample_to_hdf</span><span class="p">(</span><span class="n">Sample</span><span class="p">(</span><span class="o">**</span><span class="n">sample_d</span><span class="p">),</span> <span class="n">pred_h5</span><span class="p">)</span>
+                <span class="n">count</span> <span class="o">+=</span> <span class="mi">1</span>
+
+    <span class="k">if</span> <span class="n">predictions_file</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">pred_h5</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="n">write_yaml_data</span><span class="p">(</span><span class="n">predictions_file</span><span class="p">,</span> <span class="p">{</span><span class="n">_label_decod_path_</span><span class="p">:</span> <span class="n">label_decoding</span><span class="p">})</span>
+
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s1">&#39;All done&#39;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="prepare"><a class="viewcode-back" href="../../medaka.html#medaka.inference.prepare">[docs]</a><span class="k">def</span> <span class="nf">prepare</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
+    <span class="n">bam_pileup_to_features_hdf</span><span class="p">(</span>
+        <span class="n">args</span><span class="o">.</span><span class="n">output</span><span class="p">,</span> <span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">bam</span><span class="p">,),</span> <span class="n">args</span><span class="o">.</span><span class="n">ref_fasta</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">ref_name</span><span class="p">,</span> <span class="n">chunk_len</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">sample_length</span><span class="p">,</span> <span class="n">overlap</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">overlap</span><span class="p">,</span> <span class="n">start</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">end</span><span class="p">,</span>
+        <span class="n">truth_bam</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">truth</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="process_labels"><a class="viewcode-back" href="../../medaka.html#medaka.inference.process_labels">[docs]</a><span class="k">def</span> <span class="nf">process_labels</span><span class="p">(</span><span class="n">label_counts</span><span class="p">,</span> <span class="n">max_label_len</span><span class="o">=</span><span class="mi">10</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Create map from full labels to (encoded) truncated labels.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">old_labels</span> <span class="o">=</span> <span class="p">[</span><span class="n">k</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">label_counts</span><span class="o">.</span><span class="n">keys</span><span class="p">()]</span>
+    <span class="k">if</span> <span class="nb">type</span><span class="p">(</span><span class="n">old_labels</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">==</span> <span class="nb">tuple</span><span class="p">:</span>
+        <span class="n">new_labels</span> <span class="o">=</span> <span class="p">(</span><span class="n">l</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">*</span> <span class="n">decoding</span><span class="p">[</span><span class="n">l</span><span class="p">[</span><span class="mi">0</span><span class="p">]]</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span> <span class="k">for</span> <span class="n">l</span> <span class="ow">in</span> <span class="n">old_labels</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">new_labels</span> <span class="o">=</span> <span class="p">[</span><span class="n">l</span> <span class="k">for</span> <span class="n">l</span> <span class="ow">in</span> <span class="n">old_labels</span><span class="p">]</span>
+
+    <span class="k">if</span> <span class="n">max_label_len</span> <span class="o">&lt;</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">:</span>
+        <span class="n">new_labels</span> <span class="o">=</span> <span class="p">[</span><span class="n">l</span><span class="p">[:</span><span class="n">max_label_len</span><span class="p">]</span> <span class="k">for</span> <span class="n">l</span> <span class="ow">in</span> <span class="n">new_labels</span><span class="p">]</span>
+
+    <span class="n">old_to_new</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">old_labels</span><span class="p">,</span> <span class="n">new_labels</span><span class="p">))</span>
+    <span class="n">label_decoding</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">new_labels</span><span class="p">)))</span>
+    <span class="n">label_encoding</span> <span class="o">=</span> <span class="p">{</span> <span class="n">l</span><span class="p">:</span> <span class="n">label_decoding</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">old_to_new</span><span class="p">[</span><span class="n">l</span><span class="p">])</span> <span class="k">for</span> <span class="n">l</span> <span class="ow">in</span> <span class="n">old_labels</span><span class="p">}</span>
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Label encoding dict is:</span><span class="se">\n</span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span>
+        <span class="s1">&#39;</span><span class="si">{}</span><span class="s1">: </span><span class="si">{}</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="n">v</span><span class="p">)</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">label_encoding</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+    <span class="p">)))</span>
+
+    <span class="n">new_counts</span> <span class="o">=</span> <span class="n">Counter</span><span class="p">()</span>
+    <span class="k">for</span> <span class="n">l</span> <span class="ow">in</span> <span class="n">old_labels</span><span class="p">:</span>
+        <span class="n">new_counts</span><span class="p">[</span><span class="n">label_encoding</span><span class="p">[</span><span class="n">l</span><span class="p">]]</span> <span class="o">+=</span> <span class="n">label_counts</span><span class="p">[</span><span class="n">l</span><span class="p">]</span>
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;New label counts </span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">new_counts</span><span class="p">))</span>
+
+    <span class="k">return</span> <span class="n">label_encoding</span><span class="p">,</span> <span class="n">label_decoding</span><span class="p">,</span> <span class="n">new_counts</span></div>
+
+
+<div class="viewcode-block" id="train"><a class="viewcode-back" href="../../medaka.html#medaka.inference.train">[docs]</a><span class="k">def</span> <span class="nf">train</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Training program.&quot;&quot;&quot;</span>
+    <span class="n">train_name</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">train_name</span>
+    <span class="n">mkdir_p</span><span class="p">(</span><span class="n">train_name</span><span class="p">,</span> <span class="n">info</span><span class="o">=</span><span class="s1">&#39;Results will be overwritten.&#39;</span><span class="p">)</span>
+
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Loading datasets:</span><span class="se">\n</span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">features</span><span class="p">)))</span>
+
+    <span class="c1"># get counts of labels in training samples</span>
+    <span class="n">label_counts</span> <span class="o">=</span> <span class="n">Counter</span><span class="p">()</span>
+    <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">args</span><span class="o">.</span><span class="n">features</span><span class="p">:</span>
+        <span class="n">label_counts</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">load_yaml_data</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">_label_counts_path_</span><span class="p">))</span>
+
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Total labels </span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="nb">sum</span><span class="p">(</span><span class="n">label_counts</span><span class="o">.</span><span class="n">values</span><span class="p">())))</span>
+
+
+    <span class="n">is_batched</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="n">handles</span> <span class="o">=</span> <span class="p">{</span><span class="n">fname</span><span class="p">:</span> <span class="n">h5py</span><span class="o">.</span><span class="n">File</span><span class="p">(</span><span class="n">fname</span><span class="p">,</span> <span class="s1">&#39;r&#39;</span><span class="p">)</span> <span class="k">for</span> <span class="n">fname</span> <span class="ow">in</span> <span class="n">args</span><span class="o">.</span><span class="n">features</span><span class="p">}</span>
+    <span class="k">for</span> <span class="n">f</span><span class="p">,</span> <span class="n">h5</span> <span class="ow">in</span> <span class="n">handles</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="n">has_batches</span> <span class="o">=</span> <span class="n">_label_batches_path_</span> <span class="ow">in</span> <span class="n">h5</span> <span class="ow">and</span> <span class="n">_feature_batches_path_</span> <span class="ow">in</span> <span class="n">h5</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="s1">&#39;Found batches in </span><span class="si">{}</span><span class="s1">.&#39;</span> <span class="k">if</span> <span class="n">has_batches</span> <span class="k">else</span> <span class="s1">&#39;No batches in </span><span class="si">{}</span><span class="s1">.&#39;</span>
+        <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">f</span><span class="p">))</span>
+        <span class="n">is_batched</span> <span class="o">=</span> <span class="n">is_batched</span> <span class="ow">and</span> <span class="n">has_batches</span>
+
+    <span class="k">if</span> <span class="n">is_batched</span><span class="p">:</span>
+
+        <span class="n">batches</span> <span class="o">=</span> <span class="p">[</span> <span class="p">(</span><span class="n">fname</span><span class="p">,</span> <span class="n">k</span><span class="p">)</span> <span class="k">for</span> <span class="p">(</span><span class="n">fname</span><span class="p">,</span> <span class="n">fh</span><span class="p">)</span> <span class="ow">in</span> <span class="n">handles</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">fh</span><span class="p">[</span><span class="n">_feature_batches_path_</span><span class="p">]]</span>
+
+        <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Got </span><span class="si">{}</span><span class="s2"> batches.&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">batches</span><span class="p">)))</span>
+        <span class="c1"># check batch size using first batch</span>
+        <span class="n">test_f</span><span class="p">,</span> <span class="n">test_batch</span> <span class="o">=</span> <span class="n">batches</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">h5</span> <span class="o">=</span> <span class="n">handles</span><span class="p">[</span><span class="n">test_f</span><span class="p">]</span>
+        <span class="n">batch_shape</span> <span class="o">=</span> <span class="n">h5</span><span class="p">[</span><span class="s1">&#39;</span><span class="si">{}</span><span class="s1">/</span><span class="si">{}</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">_feature_batches_path_</span><span class="p">,</span> <span class="n">test_batch</span><span class="p">)]</span><span class="o">.</span><span class="n">shape</span>
+        <span class="n">label_shape</span> <span class="o">=</span> <span class="n">h5</span><span class="p">[</span><span class="s1">&#39;</span><span class="si">{}</span><span class="s1">/</span><span class="si">{}</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">_label_batches_path_</span><span class="p">,</span> <span class="n">test_batch</span><span class="p">)]</span><span class="o">.</span><span class="n">shape</span>
+        <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Got </span><span class="si">{}</span><span class="s2"> batches with feat shape </span><span class="si">{}</span><span class="s2">, label shape </span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">batches</span><span class="p">),</span> <span class="n">batch_shape</span><span class="p">,</span> <span class="n">label_shape</span><span class="p">))</span>
+        <span class="n">batch_size</span><span class="p">,</span> <span class="n">timesteps</span><span class="p">,</span> <span class="n">feat_dim</span> <span class="o">=</span> <span class="n">batch_shape</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">sum</span><span class="p">(</span><span class="n">label_counts</span><span class="o">.</span><span class="n">values</span><span class="p">())</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">batches</span><span class="p">)</span> <span class="o">*</span> <span class="n">timesteps</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;Label counts not consistent with number of batches&#39;</span><span class="p">)</span>
+
+        <span class="n">n_batch_train</span> <span class="o">=</span> <span class="nb">int</span><span class="p">((</span><span class="mi">1</span> <span class="o">-</span> <span class="n">args</span><span class="o">.</span><span class="n">validation_split</span><span class="p">)</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="n">batches</span><span class="p">))</span>
+        <span class="n">train_batches</span> <span class="o">=</span> <span class="n">batches</span><span class="p">[:</span><span class="n">n_batch_train</span><span class="p">]</span>
+        <span class="n">valid_batches</span> <span class="o">=</span> <span class="n">batches</span><span class="p">[</span><span class="n">n_batch_train</span><span class="p">:]</span>
+        <span class="n">n_batch_valid</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">valid_batches</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">balanced_weights</span><span class="p">:</span>
+            <span class="n">sparse_labels</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">sparse_labels</span> <span class="o">=</span> <span class="kc">True</span>
+
+        <span class="n">gen_train</span> <span class="o">=</span> <span class="n">yield_batches_from_hdfs</span><span class="p">(</span><span class="n">handles</span><span class="p">,</span> <span class="n">train_batches</span><span class="p">,</span> <span class="n">sparse_labels</span><span class="o">=</span><span class="n">sparse_labels</span><span class="p">,</span>
+                                            <span class="n">n_classes</span><span class="o">=</span><span class="nb">len</span><span class="p">(</span><span class="n">label_counts</span><span class="p">))</span>
+        <span class="n">gen_valid</span> <span class="o">=</span> <span class="n">yield_batches_from_hdfs</span><span class="p">(</span><span class="n">handles</span><span class="p">,</span> <span class="n">valid_batches</span><span class="p">,</span> <span class="n">sparse_labels</span><span class="o">=</span><span class="n">sparse_labels</span><span class="p">,</span>
+                                            <span class="n">n_classes</span><span class="o">=</span><span class="nb">len</span><span class="p">(</span><span class="n">label_counts</span><span class="p">))</span>
+        <span class="n">label_decoding</span> <span class="o">=</span> <span class="n">load_yaml_data</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">features</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">_label_decod_path_</span><span class="p">)</span>
+
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">sample_index</span> <span class="o">=</span> <span class="n">get_sample_index_from_files</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">features</span><span class="p">,</span> <span class="n">max_samples</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">max_samples</span><span class="p">)</span>
+        <span class="n">refs</span> <span class="o">=</span> <span class="p">[</span><span class="n">k</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">sample_index</span><span class="o">.</span><span class="n">keys</span><span class="p">()]</span>
+        <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Got the following references for training:</span><span class="se">\n</span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">refs</span><span class="p">)))</span>
+        <span class="n">n_samples</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">([</span><span class="nb">len</span><span class="p">(</span><span class="n">sample_index</span><span class="p">[</span><span class="n">k</span><span class="p">])</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">sample_index</span><span class="p">])</span>
+        <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Got </span><span class="si">{}</span><span class="s2"> pileup chunks for training.&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">n_samples</span><span class="p">))</span>
+        <span class="c1"># get label encoding, given max_label_len</span>
+        <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Max label length: </span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">max_label_len</span> <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">max_label_len</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="s1">&#39;inf&#39;</span><span class="p">))</span>
+        <span class="n">label_encoding</span><span class="p">,</span> <span class="n">label_decoding</span><span class="p">,</span> <span class="n">label_counts</span> <span class="o">=</span> <span class="n">process_labels</span><span class="p">(</span><span class="n">label_counts</span><span class="p">,</span> <span class="n">max_label_len</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">max_label_len</span><span class="p">)</span>
+
+        <span class="c1"># create seperate generators of x,y for training and validation</span>
+        <span class="c1"># shuffle samples before making split so each ref represented in training</span>
+        <span class="c1"># and validation and batches are not biased to a particular ref.</span>
+        <span class="n">samples</span> <span class="o">=</span> <span class="p">[(</span><span class="n">d</span><span class="p">[</span><span class="s1">&#39;key&#39;</span><span class="p">],</span> <span class="n">d</span><span class="p">[</span><span class="s1">&#39;filename&#39;</span><span class="p">])</span> <span class="k">for</span> <span class="n">ref</span> <span class="ow">in</span> <span class="n">sample_index</span><span class="o">.</span><span class="n">values</span><span class="p">()</span> <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">ref</span><span class="p">]</span>
+        <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">shuffle</span><span class="p">(</span><span class="n">samples</span><span class="p">)</span>  <span class="c1"># shuffle in place</span>
+        <span class="n">n_samples_train</span> <span class="o">=</span> <span class="nb">int</span><span class="p">((</span><span class="mi">1</span> <span class="o">-</span> <span class="n">args</span><span class="o">.</span><span class="n">validation_split</span><span class="p">)</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="n">samples</span><span class="p">))</span>
+        <span class="n">samples_train</span> <span class="o">=</span> <span class="n">samples</span><span class="p">[:</span><span class="n">n_samples_train</span><span class="p">]</span>
+        <span class="n">samples_valid</span> <span class="o">=</span> <span class="n">samples</span><span class="p">[</span><span class="n">n_samples_train</span><span class="p">:]</span>
+        <span class="c1"># all batches need to be the same size, so pad samples_train and samples_valid</span>
+        <span class="n">n_extra_train</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">batch_size</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">samples_train</span><span class="p">)</span> <span class="o">%</span> <span class="n">args</span><span class="o">.</span><span class="n">batch_size</span>
+        <span class="n">n_extra_valid</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">batch_size</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">samples_valid</span><span class="p">)</span> <span class="o">%</span> <span class="n">args</span><span class="o">.</span><span class="n">batch_size</span>
+        <span class="n">samples_train</span> <span class="o">+=</span> <span class="p">[</span><span class="n">samples_train</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">samples_train</span><span class="p">),</span> <span class="n">n_extra_train</span><span class="p">)]</span>
+        <span class="n">samples_valid</span> <span class="o">+=</span> <span class="p">[</span><span class="n">samples_valid</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">samples_valid</span><span class="p">),</span> <span class="n">n_extra_valid</span><span class="p">)]</span>
+
+        <span class="n">msg</span> <span class="o">=</span> <span class="s1">&#39;</span><span class="si">{}</span><span class="s1"> training samples padded to </span><span class="si">{}</span><span class="s1">, </span><span class="si">{}</span><span class="s1"> validation samples padded to </span><span class="si">{}</span><span class="s1">&#39;</span>
+        <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">samples_train</span><span class="p">)),</span> <span class="nb">len</span><span class="p">(</span><span class="n">samples_train</span><span class="p">),</span>
+                                <span class="nb">len</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">samples_valid</span><span class="p">)),</span> <span class="nb">len</span><span class="p">(</span><span class="n">samples_valid</span><span class="p">)))</span>
+
+        <span class="c1"># load one sample to figure out timesteps and data dim</span>
+        <span class="n">key</span><span class="p">,</span> <span class="n">fname</span> <span class="o">=</span> <span class="n">samples_train</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">with</span> <span class="n">h5py</span><span class="o">.</span><span class="n">File</span><span class="p">(</span><span class="n">fname</span><span class="p">)</span> <span class="k">as</span> <span class="n">h5</span><span class="p">:</span>
+            <span class="n">first_sample</span> <span class="o">=</span> <span class="n">load_sample_from_hdf</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">h5</span><span class="p">)</span>
+        <span class="n">timesteps</span> <span class="o">=</span> <span class="n">first_sample</span><span class="o">.</span><span class="n">features</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">feat_dim</span> <span class="o">=</span> <span class="n">first_sample</span><span class="o">.</span><span class="n">features</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">sum</span><span class="p">(</span><span class="n">label_counts</span><span class="o">.</span><span class="n">values</span><span class="p">())</span> <span class="o">//</span> <span class="n">timesteps</span> <span class="o">==</span> <span class="n">n_samples</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;Label counts not consistent with number of samples&#39;</span><span class="p">)</span>
+
+        <span class="n">gen_train_samples</span> <span class="o">=</span> <span class="n">yield_from_feature_files</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">features</span><span class="p">,</span> <span class="n">samples</span><span class="o">=</span><span class="n">itertools</span><span class="o">.</span><span class="n">cycle</span><span class="p">(</span><span class="n">samples_train</span><span class="p">))</span>
+        <span class="n">gen_valid_samples</span> <span class="o">=</span> <span class="n">yield_from_feature_files</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">features</span><span class="p">,</span> <span class="n">samples</span><span class="o">=</span><span class="n">itertools</span><span class="o">.</span><span class="n">cycle</span><span class="p">(</span><span class="n">samples_valid</span><span class="p">))</span>
+        <span class="n">s2xy</span> <span class="o">=</span> <span class="n">partial</span><span class="p">(</span><span class="n">sample_to_x_y</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="n">label_encoding</span><span class="p">)</span>
+        <span class="n">gen_train</span> <span class="o">=</span> <span class="n">gen_train_batch</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="n">s2xy</span><span class="p">,</span> <span class="n">gen_train_samples</span><span class="p">),</span> <span class="n">args</span><span class="o">.</span><span class="n">batch_size</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s1">&#39;training&#39;</span><span class="p">)</span>
+        <span class="n">gen_valid</span> <span class="o">=</span> <span class="n">gen_train_batch</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="n">s2xy</span><span class="p">,</span> <span class="n">gen_valid_samples</span><span class="p">),</span> <span class="n">args</span><span class="o">.</span><span class="n">batch_size</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s1">&#39;validation&#39;</span><span class="p">)</span>
+        <span class="n">n_batch_train</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">samples_train</span><span class="p">)</span> <span class="o">//</span> <span class="n">args</span><span class="o">.</span><span class="n">batch_size</span>
+        <span class="n">n_batch_valid</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">samples_valid</span><span class="p">)</span> <span class="o">//</span> <span class="n">args</span><span class="o">.</span><span class="n">batch_size</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">balanced_weights</span><span class="p">:</span>
+        <span class="n">n_samples</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">label_counts</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+        <span class="n">n_classes</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">label_counts</span><span class="p">)</span>
+        <span class="n">class_weight</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">n_samples</span><span class="p">)</span><span class="o">/</span><span class="p">(</span><span class="n">n_classes</span> <span class="o">*</span> <span class="n">count</span><span class="p">)</span> <span class="k">for</span> <span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="n">count</span><span class="p">)</span> <span class="ow">in</span> <span class="n">label_counts</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
+        <span class="n">class_weight</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">class_weight</span><span class="p">[</span><span class="n">c</span><span class="p">]</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">class_weight</span><span class="o">.</span><span class="n">keys</span><span class="p">())])</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">class_weight</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="n">h</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">d</span><span class="p">,</span> <span class="n">i</span><span class="p">:</span> <span class="n">d</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">if</span> <span class="n">d</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="mi">1</span>
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Label encoding is:</span><span class="se">\n</span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span>
+        <span class="s1">&#39;</span><span class="si">{}</span><span class="s1"> (</span><span class="si">{}</span><span class="s1">, </span><span class="si">{:9.6f}</span><span class="s1">): </span><span class="si">{}</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">label_counts</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">h</span><span class="p">(</span><span class="n">class_weight</span><span class="p">,</span> <span class="n">i</span><span class="p">),</span> <span class="n">l</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">l</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">label_decoding</span><span class="p">)</span>
+    <span class="p">)))</span>
+
+    <span class="n">run_training</span><span class="p">(</span><span class="n">train_name</span><span class="p">,</span> <span class="n">gen_train</span><span class="p">,</span> <span class="n">gen_valid</span><span class="p">,</span> <span class="n">n_batch_train</span><span class="p">,</span> <span class="n">n_batch_valid</span><span class="p">,</span> <span class="n">label_decoding</span><span class="p">,</span>
+                 <span class="n">timesteps</span><span class="p">,</span> <span class="n">feat_dim</span><span class="p">,</span> <span class="n">model_fp</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">model</span><span class="p">,</span> <span class="n">epochs</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">epochs</span><span class="p">,</span> <span class="n">batch_size</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">batch_size</span><span class="p">,</span>
+                 <span class="n">class_weight</span><span class="o">=</span><span class="n">class_weight</span><span class="p">)</span>
+
+    <span class="k">for</span> <span class="n">fh</span> <span class="ow">in</span> <span class="n">handles</span><span class="o">.</span><span class="n">values</span><span class="p">():</span>
+        <span class="n">fh</span><span class="o">.</span><span class="n">close</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="predict"><a class="viewcode-back" href="../../medaka.html#medaka.inference.predict">[docs]</a><span class="k">def</span> <span class="nf">predict</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Inference program.&quot;&quot;&quot;</span>
+    <span class="n">n_samples</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">pileup</span><span class="p">:</span>
+        <span class="c1"># TODO make use of start and end options when loading pileup from hdf ?</span>
+        <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Loading pileup from file.&quot;</span><span class="p">)</span>
+        <span class="n">chunks</span> <span class="o">=</span> <span class="n">rechunk</span><span class="p">(</span><span class="n">load_pileup</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">pileup</span><span class="p">),</span> <span class="n">overlap</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">overlap</span><span class="p">,</span> <span class="n">chunk_size</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">sample_length</span><span class="p">)</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="n">generate_samples</span><span class="p">(</span><span class="n">chunks</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">args</span><span class="o">.</span><span class="n">features</span><span class="p">:</span>
+        <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Loading features from file for refs </span><span class="si">{}</span><span class="s2">.&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">ref_names</span><span class="p">))</span>
+        <span class="n">index</span> <span class="o">=</span> <span class="n">get_sample_index_from_files</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">features</span><span class="p">)</span>
+        <span class="n">refs_n_samples</span> <span class="o">=</span> <span class="p">{</span><span class="n">r</span><span class="p">:</span> <span class="nb">len</span><span class="p">(</span><span class="n">l</span><span class="p">)</span> <span class="k">for</span> <span class="p">(</span><span class="n">r</span><span class="p">,</span> <span class="n">l</span><span class="p">)</span> <span class="ow">in</span> <span class="n">index</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
+        <span class="n">ref_names</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">ref_names</span> <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">ref_names</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">refs_n_samples</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="s2">&quot;</span><span class="si">{}</span><span class="s2">: </span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">r</span><span class="p">,</span> <span class="n">refs_n_samples</span><span class="p">[</span><span class="n">r</span><span class="p">])</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">ref_names</span><span class="p">])</span>
+        <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Number of samples per reference:</span><span class="se">\n</span><span class="si">{}</span><span class="se">\n</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">msg</span><span class="p">))</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="n">yield_from_feature_files</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">features</span><span class="p">,</span> <span class="n">ref_names</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">ref_names</span><span class="p">)</span>
+        <span class="n">n_samples</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">refs_n_samples</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Generating features from bam.&quot;</span><span class="p">)</span>
+        <span class="n">bam</span><span class="p">,</span> <span class="n">ref_fasta</span><span class="p">,</span> <span class="n">ref_name</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">alignments</span>
+        <span class="n">tview_gen</span> <span class="o">=</span> <span class="n">generate_pileup_chunks</span><span class="p">((</span><span class="n">bam</span><span class="p">,),</span> <span class="n">ref_fasta</span><span class="p">,</span> <span class="n">ref_name</span><span class="o">=</span><span class="n">ref_name</span><span class="p">,</span> <span class="n">start</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">end</span><span class="p">,</span>
+                                           <span class="n">chunk_len</span><span class="o">=</span><span class="mi">5</span><span class="o">*</span><span class="n">args</span><span class="o">.</span><span class="n">sample_length</span><span class="p">,</span> <span class="n">overlap</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">overlap</span><span class="p">)</span>
+        <span class="n">chunks</span> <span class="o">=</span> <span class="n">rechunk</span><span class="p">(</span><span class="n">tview_gen</span><span class="p">,</span> <span class="n">overlap</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">overlap</span><span class="p">,</span> <span class="n">chunk_size</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">sample_length</span><span class="p">)</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="n">generate_samples</span><span class="p">(</span><span class="n">chunks</span><span class="p">)</span>
+
+    <span class="c1"># take a sneak peak at the first sample</span>
+    <span class="n">first_sample</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+    <span class="n">data</span> <span class="o">=</span> <span class="n">chain_thread_safe</span><span class="p">([</span><span class="n">first_sample</span><span class="p">],</span> <span class="n">data</span><span class="p">)</span>
+    <span class="n">timesteps</span> <span class="o">=</span> <span class="n">first_sample</span><span class="o">.</span><span class="n">features</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">feat_dim</span> <span class="o">=</span> <span class="n">first_sample</span><span class="o">.</span><span class="n">features</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+
+    <span class="c1"># re-build model with desired number of sequence steps per sample</span>
+    <span class="c1"># derived from the features so this works wherever we got features from.</span>
+    <span class="n">model_data</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">path</span> <span class="ow">in</span> <span class="p">(</span><span class="n">_model_opt_path_</span><span class="p">,</span> <span class="n">_label_decod_path_</span><span class="p">):</span>
+        <span class="n">opt</span> <span class="o">=</span> <span class="n">load_yaml_data</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">model</span><span class="p">,</span> <span class="n">path</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">opt</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">args</span><span class="o">.</span><span class="n">model_yml</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">opt</span> <span class="o">=</span> <span class="n">load_yaml_data</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">model_yml</span><span class="p">,</span> <span class="n">path</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">opt</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="s1">&#39;</span><span class="si">{}</span><span class="s1"> was not present in the input model, use the --model_yml to provide this data.&#39;</span>
+            <span class="k">raise</span> <span class="ne">KeyError</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">path</span><span class="p">))</span>
+        <span class="n">model_data</span><span class="p">[</span><span class="n">path</span><span class="p">]</span> <span class="o">=</span> <span class="n">opt</span>
+
+    <span class="n">num_classes</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">model_data</span><span class="p">[</span><span class="n">_label_decod_path_</span><span class="p">])</span>
+
+    <span class="n">opt_str</span> <span class="o">=</span> <span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="s1">&#39;</span><span class="si">{}</span><span class="s1">: </span><span class="si">{}</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">k</span><span class="p">,</span><span class="n">v</span><span class="p">)</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">model_data</span><span class="p">[</span><span class="n">_model_opt_path_</span><span class="p">]</span><span class="o">.</span><span class="n">items</span><span class="p">()])</span>
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s1">&#39;Building model with: </span><span class="se">\n</span><span class="si">{}</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">opt_str</span><span class="p">))</span>
+    <span class="n">model</span> <span class="o">=</span> <span class="n">build_model</span><span class="p">(</span><span class="n">timesteps</span><span class="p">,</span> <span class="n">feat_dim</span><span class="p">,</span> <span class="n">num_classes</span><span class="p">,</span> <span class="o">**</span><span class="n">model_data</span><span class="p">[</span><span class="n">_model_opt_path_</span><span class="p">])</span>
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Loading weights from </span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">model</span><span class="p">))</span>
+    <span class="n">model</span><span class="o">.</span><span class="n">load_weights</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">model</span><span class="p">)</span>
+    <span class="c1"># check new model and old are consistent in size</span>
+    <span class="n">old_model</span> <span class="o">=</span> <span class="n">load_model</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">model</span><span class="p">,</span> <span class="n">custom_objects</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;qscore&#39;</span><span class="p">:</span> <span class="n">qscore</span><span class="p">})</span>
+    <span class="n">get_feat_dim</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">m</span><span class="p">:</span> <span class="n">m</span><span class="o">.</span><span class="n">get_input_shape_at</span><span class="p">(</span><span class="mi">0</span><span class="p">)[</span><span class="mi">2</span><span class="p">]</span>
+    <span class="n">get_label_dim</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">m</span><span class="p">:</span> <span class="n">m</span><span class="o">.</span><span class="n">get_output_shape_at</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">get_feat_dim</span><span class="p">(</span><span class="n">model</span><span class="p">)</span> <span class="o">==</span> <span class="n">get_feat_dim</span><span class="p">(</span><span class="n">old_model</span><span class="p">):</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="s1">&#39;Incorrect feature dimension: got </span><span class="si">{}</span><span class="s1">, model expects </span><span class="si">{}</span><span class="s1">&#39;</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">feat_dim</span><span class="p">,</span> <span class="n">get_feat_dim</span><span class="p">(</span><span class="n">old_model</span><span class="p">)))</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">get_label_dim</span><span class="p">(</span><span class="n">model</span><span class="p">)</span> <span class="o">==</span> <span class="n">get_label_dim</span><span class="p">(</span><span class="n">old_model</span><span class="p">):</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="s1">&#39;Incorrect label dimension: got </span><span class="si">{}</span><span class="s1">, model expects </span><span class="si">{}</span><span class="s1">&#39;</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">num_classes</span><span class="p">,</span> <span class="n">get_label_dim</span><span class="p">(</span><span class="n">old_model</span><span class="p">)))</span>
+
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Label decoding is:</span><span class="se">\n</span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span>
+        <span class="s1">&#39;</span><span class="si">{}</span><span class="s1">: </span><span class="si">{}</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">x</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">model_data</span><span class="p">[</span><span class="n">_label_decod_path_</span><span class="p">])</span>
+    <span class="p">)))</span>
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\n</span><span class="si">{}</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">summary</span><span class="p">()))</span>
+
+    <span class="n">run_prediction</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">label_decoding</span><span class="o">=</span><span class="n">model_data</span><span class="p">[</span><span class="n">_label_decod_path_</span><span class="p">],</span>
+                   <span class="n">output_file</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">output_fasta</span><span class="p">,</span>
+                   <span class="n">predictions_file</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">output_probs</span><span class="p">,</span>
+                   <span class="n">batch_size</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">batch_size</span><span class="p">,</span> <span class="n">n_samples</span><span class="o">=</span><span class="n">n_samples</span><span class="p">,</span>
+    <span class="p">)</span></div>
+</pre></div>
+
+           </div>
+           
+          </div>
+          <footer>
+  
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>
+        &copy; Copyright 2017, Oxford Nanopore Technologies.
+
+    </p>
+  </div>
+  Built with <a href="http://sphinx-doc.org/">Sphinx</a> using a <a href="https://github.com/rtfd/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>. 
+
+</footer>
+
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+  
+
+
+  
+
+    <script type="text/javascript">
+        var DOCUMENTATION_OPTIONS = {
+            URL_ROOT:'../../',
+            VERSION:'0.3.0',
+            LANGUAGE:'None',
+            COLLAPSE_INDEX:false,
+            FILE_SUFFIX:'.html',
+            HAS_SOURCE:  true,
+            SOURCELINK_SUFFIX: '.txt'
+        };
+    </script>
+      <script type="text/javascript" src="../../_static/jquery.js"></script>
+      <script type="text/javascript" src="../../_static/underscore.js"></script>
+      <script type="text/javascript" src="../../_static/doctools.js"></script>
+      <script type="text/javascript" src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+
+  
+
+  <script type="text/javascript" src="../../_static/js/theme.js"></script>
+
+  <script type="text/javascript">
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,782 @@
+
+
+<!DOCTYPE html>
+<!--[if IE 8]><html class="no-js lt-ie9" lang="en" > <![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en" > <!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <title>medaka.tview &mdash; Medaka 0.3.0 documentation</title>
+  
+
+  
+  
+  
+  
+
+  
+
+  
+  
+    
+
+  
+
+  <link rel="stylesheet" href="../../_static/css/theme.css" type="text/css" />
+  <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+
+  
+  <script src="../../_static/js/modernizr.min.js"></script>
+
+</head>
+
+<body class="wy-body-for-nav">
+
+   
+  <div class="wy-grid-for-nav">
+
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search">
+          
+
+          
+            <a href="../../index.html" class="icon icon-home"> Medaka
+          
+
+          
+          </a>
+
+          
+            
+            
+              <div class="version">
+                0.3.0
+              </div>
+            
+          
+
+          
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+
+          
+        </div>
+
+        <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+          
+            
+            
+              
+            
+            
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../benchmarks.html">Benchmarks</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../walkthrough.html">Walkthrough</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../development.html">Development</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../future.html">History and Future Directions</a></li>
+</ul>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../medaka.html">medaka package</a></li>
+</ul>
+
+            
+          
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" aria-label="top navigation">
+        
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">Medaka</a>
+        
+      </nav>
+
+
+      <div class="wy-nav-content">
+        
+        <div class="rst-content">
+        
+          
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div role="navigation" aria-label="breadcrumbs navigation">
+
+  <ul class="wy-breadcrumbs">
+    
+      <li><a href="../../index.html">Docs</a> &raquo;</li>
+        
+          <li><a href="../index.html">Module code</a> &raquo;</li>
+        
+      <li>medaka.tview</li>
+    
+    
+      <li class="wy-breadcrumbs-aside">
+        
+      </li>
+    
+  </ul>
+
+  
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+            
+  <h1>Source code for medaka.tview</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span> <span class="nn">functools</span>
+<span class="kn">import</span> <span class="nn">h5py</span>
+<span class="kn">import</span> <span class="nn">itertools</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
+<span class="kn">import</span> <span class="nn">pysam</span>
+<span class="kn">import</span> <span class="nn">re</span>
+<span class="kn">import</span> <span class="nn">subprocess</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="k">import</span> <span class="n">Tuple</span>
+
+<span class="kn">from</span> <span class="nn">collections</span> <span class="k">import</span> <span class="n">namedtuple</span>
+<span class="kn">from</span> <span class="nn">medaka.common</span> <span class="k">import</span> <span class="n">segment_limits</span><span class="p">,</span> <span class="n">rle</span><span class="p">,</span> <span class="n">sliding_window</span><span class="p">,</span> <span class="n">get_common_index</span>
+<span class="kn">from</span> <span class="nn">medaka.common</span> <span class="k">import</span> <span class="n">_gap_</span><span class="p">,</span> <span class="n">_ref_gap_</span><span class="p">,</span> <span class="n">_read_sep_</span><span class="p">,</span> <span class="n">decoding</span><span class="p">,</span> <span class="n">encoding</span><span class="p">,</span> <span class="n">Pileup</span><span class="p">,</span> <span class="n">LabelledPileup</span>
+<span class="kn">from</span> <span class="nn">medaka.labels</span> <span class="k">import</span> <span class="n">TruthAlignment</span>
+
+<span class="kn">from</span> <span class="nn">timeit</span> <span class="k">import</span> <span class="n">default_timer</span> <span class="k">as</span> <span class="n">now</span>
+
+<span class="kn">import</span> <span class="nn">logging</span>
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
+
+<span class="n">samtools</span> <span class="o">=</span> <span class="s1">&#39;samtools&#39;</span>  <span class="c1"># we place into the virtual environment</span>
+
+<span class="c1"># String output of running samtools tview</span>
+<span class="n">RawTView</span> <span class="o">=</span> <span class="n">namedtuple</span><span class="p">(</span><span class="s1">&#39;TView&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">,</span> <span class="s1">&#39;ref_seq&#39;</span><span class="p">,</span> <span class="s1">&#39;consensus&#39;</span><span class="p">,</span> <span class="s1">&#39;pileup&#39;</span><span class="p">,</span> <span class="s1">&#39;start&#39;</span><span class="p">,</span> <span class="s1">&#39;end&#39;</span><span class="p">])</span>
+
+<div class="viewcode-block" id="TViewException"><a class="viewcode-back" href="../../medaka.html#medaka.tview.TViewException">[docs]</a><span class="k">class</span> <span class="nc">TViewException</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
+    <span class="k">pass</span></div>
+
+
+<div class="viewcode-block" id="TView"><a class="viewcode-back" href="../../medaka.html#medaka.tview.TView">[docs]</a><span class="k">class</span> <span class="nc">TView</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">bam</span><span class="p">:</span><span class="nb">str</span><span class="p">,</span> <span class="n">reference</span><span class="p">:</span><span class="nb">str</span><span class="p">,</span> <span class="n">columns</span><span class="p">:</span><span class="nb">int</span><span class="o">=</span><span class="mi">20000</span><span class="p">,</span> <span class="n">cache</span><span class="p">:</span><span class="nb">int</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">minor_gaps</span><span class="p">:</span><span class="nb">bool</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Interface to samtools tview functionality.</span>
+
+<span class="sd">        :param bam: path to bam file of reads aligned to a common</span>
+<span class="sd">            reference.</span>
+<span class="sd">        :param reference: path to fasta file of reference to which reads</span>
+<span class="sd">            are aligned.</span>
+<span class="sd">        :param columns: default number of tview columns to read in one go.</span>
+<span class="sd">        :param cache: Currently not implemented.</span>
+<span class="sd">        :param minor_gaps: encoded gaps in non-reference positions distinctly.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s1">&#39;TView&#39;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_bam</span> <span class="o">=</span> <span class="n">bam</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_reference</span> <span class="o">=</span> <span class="n">reference</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_columns</span> <span class="o">=</span> <span class="n">columns</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_cache</span> <span class="o">=</span> <span class="n">cache</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_minor_gaps</span> <span class="o">=</span> <span class="n">minor_gaps</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_minor_gaps</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">NotImplementedError</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_columns_per_base</span> <span class="o">=</span> <span class="mi">3</span> <span class="c1"># reasonable estimate</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_column_pad</span> <span class="o">=</span> <span class="mf">1.1</span> <span class="c1"># multiplier when _columns_per_base is updated</span>
+
+        <span class="c1"># crosscheck the inputs</span>
+        <span class="k">with</span> <span class="n">pysam</span><span class="o">.</span><span class="n">AlignmentFile</span><span class="p">(</span><span class="n">bam</span><span class="p">,</span> <span class="s1">&#39;rb&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">b</span><span class="p">:</span>
+            <span class="n">brefs</span> <span class="o">=</span> <span class="n">b</span><span class="o">.</span><span class="n">references</span>
+            <span class="n">blens</span> <span class="o">=</span> <span class="n">b</span><span class="o">.</span><span class="n">lengths</span>
+        <span class="n">rrefs</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">pysam</span><span class="o">.</span><span class="n">FastaFile</span><span class="p">(</span><span class="n">reference</span><span class="p">)</span><span class="o">.</span><span class="n">references</span><span class="p">)</span>
+        <span class="n">sbrefs</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">brefs</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">sbrefs</span><span class="o">.</span><span class="n">issuperset</span><span class="p">(</span><span class="n">rrefs</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;input bam and reference do not appear consistent: </span><span class="si">{}</span><span class="s2"> vs </span><span class="si">{}</span><span class="s2">.&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">sbrefs</span><span class="p">,</span> <span class="n">rrefs</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_refs</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">brefs</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_reflens</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">brefs</span><span class="p">,</span> <span class="n">blens</span><span class="p">))</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_pileup</span> <span class="o">=</span> <span class="kc">None</span> <span class="c1"># buffered `Pileup` object</span>
+
+
+    <span class="k">def</span> <span class="nf">_run_tview</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ref_name</span><span class="p">,</span> <span class="n">start</span><span class="p">,</span> <span class="n">columns</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Run samtools tview.&quot;&quot;&quot;</span>
+        <span class="k">def</span> <span class="nf">_find_coords</span><span class="p">(</span><span class="n">coord_line</span><span class="p">,</span> <span class="n">ref_line</span><span class="p">):</span>
+            <span class="c1"># Find the start and end ref coordinate of a tview chunk</span>
+            <span class="c1"># from the coordinates line and reference line.</span>
+            <span class="n">coords_iter</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">finditer</span><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;\S+&#39;</span><span class="p">,</span> <span class="n">coord_line</span><span class="p">)</span>
+            <span class="n">first</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="n">coords_iter</span><span class="p">)</span>
+            <span class="n">last</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="k">for</span> <span class="n">last</span> <span class="ow">in</span> <span class="n">coords_iter</span><span class="p">:</span>
+                <span class="k">pass</span>
+            <span class="c1"># return 0-based numbers coords</span>
+            <span class="n">first_coord</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">first</span><span class="o">.</span><span class="n">group</span><span class="p">())</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">ref_line</span><span class="p">[:</span><span class="n">first</span><span class="o">.</span><span class="n">start</span><span class="p">()]</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;*&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">))</span> <span class="o">-</span> <span class="mi">1</span>
+            <span class="n">last_coord</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">last</span><span class="o">.</span><span class="n">group</span><span class="p">())</span> <span class="o">+</span> <span class="nb">len</span><span class="p">(</span><span class="n">ref_line</span><span class="p">[</span><span class="n">last</span><span class="o">.</span><span class="n">start</span><span class="p">()</span> <span class="o">+</span> <span class="mi">1</span><span class="p">:]</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;*&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">))</span> <span class="o">-</span> <span class="mi">1</span>
+            <span class="k">return</span> <span class="n">first_coord</span><span class="p">,</span> <span class="n">last_coord</span>
+
+
+        <span class="c1"># tview is 1 based</span>
+        <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s1">&#39;COLUMNS&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">columns</span><span class="p">)</span>
+        <span class="n">cmd</span> <span class="o">=</span> <span class="p">[</span><span class="n">samtools</span><span class="p">,</span> <span class="s1">&#39;tview&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_bam</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_reference</span><span class="p">,</span> <span class="s1">&#39;-d&#39;</span><span class="p">,</span> <span class="s1">&#39;T&#39;</span><span class="p">,</span> <span class="s1">&#39;-p&#39;</span><span class="p">,</span> <span class="s1">&#39;</span><span class="si">{}</span><span class="s1">:</span><span class="si">{}</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">ref_name</span><span class="p">,</span> <span class="n">start</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)]</span>
+        <span class="n">t0</span> <span class="o">=</span> <span class="n">now</span><span class="p">()</span>
+        <span class="n">output</span> <span class="o">=</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">check_output</span><span class="p">(</span><span class="n">cmd</span><span class="p">)</span><span class="o">.</span><span class="n">decode</span><span class="p">()</span>
+        <span class="n">t1</span> <span class="o">=</span> <span class="n">now</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Ran tview for </span><span class="si">{}</span><span class="s2">, COLUMNS=</span><span class="si">{}</span><span class="s2"> </span><span class="se">\t</span><span class="s2">(</span><span class="si">{:.3f}</span><span class="s2">s)&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">start</span><span class="p">,</span> <span class="n">columns</span><span class="p">,</span> <span class="n">t1</span> <span class="o">-</span> <span class="n">t0</span><span class="p">))</span>
+
+        <span class="c1"># first line contains coords, then reference, then consensus</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">coords</span><span class="p">,</span> <span class="n">ref</span><span class="p">,</span> <span class="n">consensus</span><span class="p">,</span> <span class="n">remainder</span> <span class="o">=</span> <span class="n">output</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
+        <span class="k">except</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">TViewException</span><span class="p">(</span><span class="s2">&quot;Tview did not output any reads.&quot;</span><span class="p">)</span>
+        <span class="n">start</span><span class="p">,</span> <span class="n">end</span> <span class="o">=</span> <span class="n">_find_coords</span><span class="p">(</span><span class="n">coords</span><span class="p">,</span> <span class="n">ref</span><span class="p">)</span>
+        <span class="n">pileup</span> <span class="o">=</span> <span class="n">remainder</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">RawTView</span><span class="p">(</span><span class="n">coords</span><span class="p">,</span> <span class="n">ref</span><span class="p">,</span> <span class="n">consensus</span><span class="p">,</span> <span class="n">pileup</span><span class="p">,</span> <span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">)</span>
+
+
+    <span class="k">def</span> <span class="nf">_enqueue_region</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ref_name</span><span class="p">:</span><span class="nb">str</span><span class="p">,</span> <span class="n">start</span><span class="p">:</span><span class="nb">int</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">end</span><span class="p">:</span><span class="nb">int</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Update internal buffer of tview output.</span>
+
+<span class="sd">        :param ref_name: name of reference to which reads are aligned.</span>
+<span class="sd">        :param start: zero-based start position in reference coordinates.</span>
+<span class="sd">        :param end: zero-based end position in reference coordinates.</span>
+
+<span class="sd">        :returns: self, updates `self._pileup` with fresh `Pileup` instance</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">end</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">end</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rlens</span><span class="p">[</span><span class="n">ref_name</span><span class="p">]</span> <span class="o">-</span> <span class="mi">1</span>
+
+        <span class="n">actual_end</span> <span class="o">=</span> <span class="n">end</span> <span class="o">-</span> <span class="mi">1</span>
+        <span class="n">it</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">tview</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">while</span> <span class="n">actual_end</span> <span class="o">&lt;</span> <span class="n">end</span><span class="p">:</span>
+            <span class="n">it</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="n">columns</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_columns_per_base</span> <span class="o">*</span> <span class="p">(</span><span class="n">end</span> <span class="o">-</span> <span class="n">start</span><span class="p">))</span>
+            <span class="n">tview</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_run_tview</span><span class="p">(</span><span class="n">ref_name</span><span class="p">,</span> <span class="n">start</span><span class="p">,</span> <span class="n">columns</span><span class="p">)</span>
+            <span class="n">actual_end</span> <span class="o">=</span> <span class="n">tview</span><span class="o">.</span><span class="n">end</span> <span class="c1"># actually this is the last number in the header line</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_columns_per_base</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_column_pad</span> <span class="o">*</span> <span class="n">columns</span> <span class="o">/</span> <span class="nb">float</span><span class="p">(</span><span class="n">actual_end</span> <span class="o">-</span> <span class="n">start</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Grabbing tview region required </span><span class="si">{}</span><span class="s2"> iterations.&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">it</span><span class="p">))</span>
+
+        <span class="n">t0</span> <span class="o">=</span> <span class="n">now</span><span class="p">()</span>
+        <span class="n">reads</span><span class="p">,</span> <span class="n">positions</span><span class="p">,</span> <span class="n">ref_seq</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tview_to_numpy</span><span class="p">(</span><span class="n">tview</span><span class="p">,</span> <span class="n">end</span><span class="p">)</span>
+        <span class="n">t1</span> <span class="o">=</span> <span class="n">now</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
+            <span class="s2">&quot;Parsed tview output for </span><span class="si">{}</span><span class="s2">:</span><span class="si">{}</span><span class="s2">-</span><span class="si">{}</span><span class="s2">. Shape: </span><span class="si">{}</span><span class="s2">.</span><span class="se">\t</span><span class="s2">(</span><span class="si">{:.3f}</span><span class="s2">s)&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_bam</span><span class="p">,</span> <span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">,</span> <span class="n">reads</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="n">t1</span> <span class="o">-</span> <span class="n">t0</span><span class="p">)</span>
+        <span class="p">)</span>
+        <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">ref_seq</span><span class="p">)</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">positions</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ref_seq</span> <span class="o">=</span> <span class="n">ref_seq</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_pileup</span> <span class="o">=</span> <span class="n">Pileup</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_bam</span><span class="p">,</span> <span class="n">ref_name</span><span class="p">,</span> <span class="n">reads</span><span class="p">,</span> <span class="n">positions</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span>
+
+
+    <span class="k">def</span> <span class="nf">_tview_to_numpy</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tview</span><span class="p">,</span> <span class="n">end</span><span class="p">:</span><span class="nb">int</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;From `TView` text output create a numpy array encoding and</span>
+<span class="sd">        position index.</span>
+
+<span class="sd">        :param tview: a `TView` object.</span>
+<span class="sd">        :param end: last reference coordinate to parse.</span>
+
+<span class="sd">        :returns: pileup, positions;</span>
+<span class="sd">            pileup: numpy array shape (depth, len(positions)),</span>
+<span class="sd">            positions: structured numpy array with `major` and `minor` reference position columns.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="n">first_coord</span><span class="p">,</span> <span class="n">last_coord</span> <span class="o">=</span> <span class="n">tview</span><span class="o">.</span><span class="n">start</span><span class="p">,</span> <span class="n">tview</span><span class="o">.</span><span class="n">end</span>
+        <span class="n">ref_seq</span> <span class="o">=</span> <span class="n">tview</span><span class="o">.</span><span class="n">ref_seq</span>
+
+        <span class="c1"># Record positions in reference in a (major, minor) format. Minor</span>
+        <span class="c1">#   positions do not occur in the reference. Record positions of gaps</span>
+        <span class="c1">#   in ref for use below - any matching gaps in reads will</span>
+        <span class="c1">#   be encoded distinctly from deletions wrt to ref.</span>
+        <span class="n">pos</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">ref_gaps</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">major</span><span class="p">,</span> <span class="n">minor</span> <span class="o">=</span> <span class="n">first_coord</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span>  <span class="c1"># -1, so first position will be 0</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">c</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">ref_seq</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">c</span> <span class="o">==</span> <span class="n">_gap_</span><span class="p">:</span>
+                <span class="n">minor</span> <span class="o">+=</span> <span class="mi">1</span>
+                <span class="n">ref_gaps</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">major</span> <span class="o">+=</span> <span class="mi">1</span>
+                <span class="n">minor</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="n">pos</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">major</span><span class="p">,</span> <span class="n">minor</span><span class="p">))</span>
+        <span class="n">ref_gaps</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">ref_gaps</span><span class="p">)</span>
+        <span class="n">ref_pos</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">pos</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="p">[(</span><span class="s1">&#39;major&#39;</span><span class="p">,</span> <span class="nb">int</span><span class="p">),</span> <span class="p">(</span><span class="s1">&#39;minor&#39;</span><span class="p">,</span> <span class="nb">int</span><span class="p">)])</span>
+
+        <span class="c1"># at the end of the reference, if columns exceeds end-start, tview</span>
+        <span class="c1"># will create fake positions and pad the reference with &#39;N&#39;s until</span>
+        <span class="c1"># the number of requested columns are returned. Hence the need to</span>
+        <span class="c1"># trim back to end.</span>
+        <span class="n">end_i</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">searchsorted</span><span class="p">(</span><span class="n">ref_pos</span><span class="p">[</span><span class="s1">&#39;major&#39;</span><span class="p">],</span> <span class="n">end</span><span class="p">,</span> <span class="n">side</span><span class="o">=</span><span class="s1">&#39;left&#39;</span><span class="p">)</span>
+        <span class="n">ref_seq_ar</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">i</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">ref_seq</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="s1">&#39;U1&#39;</span><span class="p">)</span>
+        <span class="n">ref_pos</span> <span class="o">=</span> <span class="n">ref_pos</span><span class="p">[:</span><span class="n">end_i</span><span class="p">]</span>
+        <span class="n">ref_seq</span> <span class="o">=</span> <span class="n">tview</span><span class="o">.</span><span class="n">ref_seq</span><span class="p">[:</span><span class="n">end_i</span><span class="p">]</span>
+        <span class="n">ref_seq_ar</span> <span class="o">=</span> <span class="n">ref_seq_ar</span><span class="p">[:</span><span class="n">end_i</span><span class="p">]</span>
+        <span class="n">ref_gaps</span> <span class="o">=</span> <span class="n">ref_gaps</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">ref_gaps</span> <span class="o">&lt;</span> <span class="n">end_i</span><span class="p">)]</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span>
+
+        <span class="n">reads</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="p">(</span><span class="n">x</span><span class="p">[:</span><span class="n">end_i</span><span class="p">]</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">tview</span><span class="o">.</span><span class="n">pileup</span><span class="p">):</span>
+            <span class="n">r_set</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">r</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">r_set</span> <span class="o">==</span> <span class="nb">set</span><span class="p">(</span><span class="n">_read_sep_</span><span class="p">)</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">r</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>  <span class="c1"># after trimming we could have a blank line</span>
+                <span class="k">continue</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">r_set</span><span class="o">.</span><span class="n">issubset</span><span class="p">(</span><span class="n">decoding</span><span class="p">):</span>
+                <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span> <span class="s2">&quot;Got unexpected tview read characters: </span><span class="si">{}</span><span class="s2">. &quot;</span> <span class="o">+</span>
+                        <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">You might want to try removing non-primary reads (samtools view -F 2038).&quot;</span> <span class="p">)</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">r_set</span><span class="o">.</span><span class="n">difference</span><span class="p">(</span><span class="n">decoding</span><span class="p">)))</span>
+            <span class="n">read</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">fromiter</span><span class="p">(</span>
+                <span class="c1"># (encoding[b] for b in r.upper()),  # if we want both forward and reverse strands in caps.</span>
+                <span class="p">(</span><span class="n">encoding</span><span class="p">[</span><span class="n">b</span><span class="p">]</span> <span class="k">for</span> <span class="n">b</span> <span class="ow">in</span> <span class="n">r</span><span class="p">),</span>
+                <span class="n">dtype</span><span class="o">=</span><span class="s1">&#39;uint32&#39;</span><span class="p">,</span> <span class="n">count</span><span class="o">=</span><span class="nb">len</span><span class="p">(</span><span class="n">r</span><span class="p">)</span>
+            <span class="p">)</span>
+            <span class="c1"># swap out gaps which also occur in the ref</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_minor_gaps</span><span class="p">:</span>
+                <span class="n">swap</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">read</span><span class="p">[</span><span class="n">ref_gaps</span><span class="p">]</span> <span class="o">==</span> <span class="n">encoding</span><span class="p">[</span><span class="n">_gap_</span><span class="p">])[</span><span class="mi">0</span><span class="p">]</span>
+                <span class="n">read</span><span class="p">[</span><span class="n">ref_gaps</span><span class="p">[</span><span class="n">swap</span><span class="p">]]</span> <span class="o">=</span> <span class="n">encoding</span><span class="p">[</span><span class="n">_ref_gap_</span><span class="p">]</span>
+            <span class="n">reads</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">read</span><span class="p">)</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">reads</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">stack</span><span class="p">(</span><span class="n">reads</span><span class="p">)</span>
+        <span class="k">except</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">TViewException</span><span class="p">(</span><span class="s2">&quot;No reads (lines) after conversion to numpy.&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">reads</span><span class="p">,</span> <span class="n">ref_pos</span><span class="p">,</span> <span class="n">ref_seq_ar</span>
+
+
+<div class="viewcode-block" id="TView.pileup"><a class="viewcode-back" href="../../medaka.html#medaka.tview.TView.pileup">[docs]</a>    <span class="k">def</span> <span class="nf">pileup</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ref_name</span><span class="p">:</span><span class="nb">str</span><span class="p">,</span> <span class="n">start</span><span class="p">:</span><span class="nb">int</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">end</span><span class="p">:</span><span class="nb">int</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Obtain the read pileup spanning a reference region as a numpy array,</span>
+<span class="sd">        along with some meta information.</span>
+
+<span class="sd">        :param ref_name: name of reference to which reads are aligned.</span>
+<span class="sd">        :param start: start position in reference coordinates.</span>
+<span class="sd">        :param end: end position in reference coordinates.</span>
+
+<span class="sd">        :returns: `Pileup` tuples</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1">#TODO: enable caching</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_enqueue_region</span><span class="p">(</span><span class="n">ref_name</span><span class="p">,</span> <span class="n">start</span><span class="o">=</span><span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="n">end</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_pileup</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ref_seq</span></div></div>
+
+
+<div class="viewcode-block" id="MultiTView"><a class="viewcode-back" href="../../medaka.html#medaka.tview.MultiTView">[docs]</a><span class="k">class</span> <span class="nc">MultiTView</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">bams</span><span class="p">:</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="n">reference</span><span class="p">:</span><span class="nb">str</span><span class="p">,</span> <span class="n">columns</span><span class="p">:</span><span class="nb">int</span><span class="o">=</span><span class="mi">20000</span><span class="p">,</span> <span class="n">cache</span><span class="p">:</span><span class="nb">int</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Produce/merge pileup data from multiple bams.</span>
+
+<span class="sd">        :param bam: path to bam file(s) of reads aligned to a common</span>
+<span class="sd">            reference.</span>
+<span class="sd">        :param reference: path to fasta file(s) of reference to which reads</span>
+<span class="sd">            are aligned.</span>
+<span class="sd">        :param columns: default number of tview columns to read in one go.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">tviews</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">TView</span><span class="p">(</span><span class="n">b</span><span class="p">,</span> <span class="n">reference</span><span class="p">,</span> <span class="n">columns</span><span class="p">)</span> <span class="k">for</span> <span class="n">b</span> <span class="ow">in</span> <span class="n">bams</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n_inputs</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">bams</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="MultiTView.pileup"><a class="viewcode-back" href="../../medaka.html#medaka.tview.MultiTView.pileup">[docs]</a>    <span class="k">def</span> <span class="nf">pileup</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ref_name</span><span class="p">:</span><span class="nb">str</span><span class="p">,</span> <span class="n">start</span><span class="p">:</span><span class="nb">int</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">end</span><span class="p">:</span><span class="nb">int</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Produce aligned pileups spanning a reference region as a numpy</span>
+<span class="sd">        array, along with some meta information.</span>
+
+<span class="sd">        :param ref_name: name of reference to which reads are aligned.</span>
+<span class="sd">        :param start: start position in reference coordinates.</span>
+<span class="sd">        :param end: end position in reference coordinates.</span>
+
+<span class="sd">        :returns: a tuple of `Pileup` tuples</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># TODO: caching the reindexed regions</span>
+        <span class="n">pileups</span><span class="p">,</span> <span class="n">ref_seqs</span> <span class="o">=</span> <span class="nb">zip</span><span class="p">(</span><span class="o">*</span><span class="p">(</span><span class="n">tv</span><span class="o">.</span><span class="n">pileup</span><span class="p">(</span><span class="n">ref_name</span><span class="p">,</span> <span class="n">start</span><span class="o">=</span><span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="n">end</span><span class="p">)</span> <span class="k">for</span> <span class="n">tv</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">tviews</span><span class="p">))</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_inputs</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">positions</span> <span class="o">=</span> <span class="n">get_common_index</span><span class="p">([</span><span class="n">p</span><span class="o">.</span><span class="n">positions</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">pileups</span><span class="p">])</span>
+            <span class="c1"># all pileups should be aligned to same ref, so just use the first</span>
+            <span class="n">ref_p</span> <span class="o">=</span> <span class="n">Pileup</span><span class="p">(</span><span class="n">reads</span><span class="o">=</span><span class="n">ref_seqs</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">positions</span><span class="o">=</span><span class="n">pileups</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">positions</span><span class="p">)</span>
+            <span class="n">ref_seq</span> <span class="o">=</span> <span class="n">reindex_labels</span><span class="p">(</span><span class="n">ref_p</span><span class="p">,</span> <span class="n">positions</span><span class="p">)</span>
+            <span class="n">pileups</span> <span class="o">=</span> <span class="p">(</span><span class="n">reindex_pileup</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="n">positions</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_minor_gaps</span><span class="p">)</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">pileups</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">ref_seq</span> <span class="o">=</span> <span class="n">ref_seqs</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+        <span class="n">pileups</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">pileups</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">pileups</span><span class="p">,</span> <span class="n">ref_seq</span></div></div>
+
+
+<div class="viewcode-block" id="reindex_pileup"><a class="viewcode-back" href="../../medaka.html#medaka.tview.reindex_pileup">[docs]</a><span class="k">def</span> <span class="nf">reindex_pileup</span><span class="p">(</span><span class="n">pileup</span><span class="p">,</span> <span class="n">new_positions</span><span class="p">,</span> <span class="n">minor_gaps</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Reindex pileup and fix any gaps.</span>
+
+<span class="sd">    :param pileup: Pileup obj with `reads` and `positions` attributes.</span>
+<span class="sd">    :param new_positions: iterable of tuples (e.g. structured numpy array) of</span>
+<span class="sd">        new minor and major positions.</span>
+<span class="sd">    :param minor_gaps: used distinct encoding for gaps in minor positions.</span>
+
+<span class="sd">    :returns: Pileup obj</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">reindexed</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">((</span><span class="n">pileup</span><span class="o">.</span><span class="n">reads</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="nb">len</span><span class="p">(</span><span class="n">new_positions</span><span class="p">)))</span>
+    <span class="n">reindexed</span><span class="o">.</span><span class="n">fill</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">)</span>
+    <span class="n">inds</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">searchsorted</span><span class="p">(</span><span class="n">new_positions</span><span class="p">,</span> <span class="n">pileup</span><span class="o">.</span><span class="n">positions</span><span class="p">)</span>
+    <span class="n">reindexed</span><span class="p">[:,</span> <span class="n">inds</span><span class="p">]</span> <span class="o">=</span> <span class="n">pileup</span><span class="o">.</span><span class="n">reads</span>
+
+    <span class="c1"># replace all np.nan with _gap_</span>
+    <span class="c1"># col is a &#39;row&#39; of the tview pileup (1 read or more with spaces between).</span>
+    <span class="n">is_minor_pos</span> <span class="o">=</span> <span class="n">new_positions</span><span class="p">[</span><span class="s1">&#39;minor&#39;</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span>
+
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">reindexed</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">minor_gaps</span><span class="p">:</span>
+            <span class="n">is_minor_pos_and_nan</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">logical_and</span><span class="p">(</span><span class="n">is_minor_pos</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">row</span><span class="p">))</span>
+            <span class="n">reindexed</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">is_minor_pos_and_nan</span><span class="p">)]</span> <span class="o">=</span> <span class="n">encoding</span><span class="p">[</span><span class="n">_ref_gap_</span><span class="p">]</span>
+        <span class="c1"># fill all remaining np.nan with _gap_</span>
+        <span class="n">reindexed</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">reindexed</span><span class="p">[</span><span class="n">i</span><span class="p">]))]</span> <span class="o">=</span> <span class="n">encoding</span><span class="p">[</span><span class="n">_gap_</span><span class="p">]</span>
+    <span class="c1"># convert back to pileup.dtype (we used nan above)</span>
+    <span class="n">reindexed</span> <span class="o">=</span> <span class="n">reindexed</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">pileup</span><span class="o">.</span><span class="n">reads</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
+
+    <span class="c1"># join up / expand read separators (relies on equality, hence done after casting back)</span>
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">reindexed</span><span class="p">):</span>
+        <span class="n">reindexed</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">join_read_seps</span><span class="p">(</span><span class="n">reindexed</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">encoding</span><span class="p">[</span><span class="n">_read_sep_</span><span class="p">],</span> <span class="n">encoding</span><span class="p">[</span><span class="n">_gap_</span><span class="p">])</span>
+
+    <span class="k">return</span> <span class="n">Pileup</span><span class="p">(</span><span class="n">pileup</span><span class="o">.</span><span class="n">bam</span><span class="p">,</span> <span class="n">pileup</span><span class="o">.</span><span class="n">ref_name</span><span class="p">,</span> <span class="n">reindexed</span><span class="p">,</span> <span class="n">new_positions</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="join_read_seps"><a class="viewcode-back" href="../../medaka.html#medaka.tview.join_read_seps">[docs]</a><span class="k">def</span> <span class="nf">join_read_seps</span><span class="p">(</span><span class="n">pileup_row</span><span class="p">,</span> <span class="n">read_sep</span><span class="p">,</span> <span class="n">gap_val</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Join up `read_sep`s converting any surrounding `gap_val`s with `read_sep`s.</span>
+<span class="sd">    i.e. in substrings containing only `read_sep` and `gap_val`, replace all</span>
+<span class="sd">    `gap_val` with `read_sep`.</span>
+
+<span class="sd">    :param pileup_row: np.array of input data.</span>
+<span class="sd">    :param read_sep: permitted gap symbol.</span>
+<span class="sd">    :param gap_val: symbol to be replaced by `read_sep`.</span>
+
+<span class="sd">    :returns: np.array of modified pileup_row</span>
+
+<span class="sd">    &gt;&gt;&gt; &#39;&#39;.join(join_read_seps(np.array([ s for s in &#39;*C*AA***  *  *** GGA&#39;]), &#39; &#39;, &#39;*&#39;))</span>
+<span class="sd">    &#39;*C*AA            GGA&#39;</span>
+<span class="sd">    &gt;&gt;&gt; &#39;&#39;.join(join_read_seps(np.array([ s for s in &#39;*C*AA*** &#39;]), &#39; &#39;, &#39;*&#39;))</span>
+<span class="sd">    &#39;*C*AA    &#39;</span>
+<span class="sd">    &gt;&gt;&gt; &#39;&#39;.join(join_read_seps(np.array([ s for s in &#39;*C*AA***&#39;]), &#39; &#39;, &#39;*&#39;))</span>
+<span class="sd">    &#39;*C*AA***&#39;</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># TODO: move to common, generalise variable names in line with description</span>
+    <span class="c1">#      of algorithm in docstring.</span>
+
+    <span class="c1"># TODO: support multiple gap_vals in case we want to clean up _gap_ and _ref_gap_</span>
+
+    <span class="c1"># can&#39;t pad with unicode str arrays, so use np.concatenate instead</span>
+    <span class="n">pad</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">gap_val</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">pileup_row</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">read_sep</span> <span class="ow">in</span> <span class="n">pileup_row</span> <span class="ow">and</span> <span class="nb">set</span><span class="p">(</span><span class="n">pileup_row</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">set</span><span class="p">((</span><span class="n">read_sep</span><span class="p">,)):</span>
+        <span class="n">pileup_row</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">((</span><span class="n">pad</span><span class="p">,</span> <span class="n">pileup_row</span><span class="p">,</span> <span class="n">pad</span><span class="p">))</span>
+        <span class="n">blocks</span> <span class="o">=</span> <span class="n">rle</span><span class="p">(</span><span class="n">pileup_row</span><span class="p">)</span>
+        <span class="c1"># create rolling view of blocks before, central, after (width 3)</span>
+        <span class="n">shape</span> <span class="o">=</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">blocks</span><span class="p">)</span> <span class="o">-</span> <span class="mi">3</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
+        <span class="n">strides</span> <span class="o">=</span> <span class="n">blocks</span><span class="o">.</span><span class="n">strides</span> <span class="o">+</span> <span class="p">(</span><span class="n">blocks</span><span class="o">.</span><span class="n">strides</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">],)</span>
+        <span class="n">sliding</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">lib</span><span class="o">.</span><span class="n">stride_tricks</span><span class="o">.</span><span class="n">as_strided</span><span class="p">(</span><span class="n">blocks</span><span class="p">,</span> <span class="n">shape</span><span class="o">=</span><span class="n">shape</span><span class="p">,</span> <span class="n">strides</span><span class="o">=</span><span class="n">strides</span><span class="p">)</span>
+        <span class="c1"># find windows with central blank...</span>
+        <span class="n">central_is_blank</span> <span class="o">=</span> <span class="n">sliding</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">][</span><span class="s1">&#39;value&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="n">read_sep</span>
+        <span class="k">for</span> <span class="n">contx</span> <span class="ow">in</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">):</span>
+            <span class="c1"># ...and where before (/after) is gap...</span>
+            <span class="n">contx_is_gap</span> <span class="o">=</span> <span class="n">sliding</span><span class="p">[:,</span> <span class="n">contx</span><span class="p">][</span><span class="s1">&#39;value&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="n">gap_val</span>
+            <span class="c1"># ...replace the intersection</span>
+            <span class="n">replace</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">logical_and</span><span class="p">(</span><span class="n">central_is_blank</span><span class="p">,</span> <span class="n">contx_is_gap</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">window</span> <span class="ow">in</span> <span class="n">sliding</span><span class="p">[</span><span class="n">replace</span><span class="p">]:</span>
+                <span class="n">con</span> <span class="o">=</span> <span class="n">window</span><span class="p">[</span><span class="n">contx</span><span class="p">]</span>
+                <span class="n">pileup_row</span><span class="p">[</span><span class="n">con</span><span class="p">[</span><span class="s1">&#39;start&#39;</span><span class="p">]:</span> <span class="n">con</span><span class="p">[</span><span class="s1">&#39;start&#39;</span><span class="p">]</span> <span class="o">+</span> <span class="n">con</span><span class="p">[</span><span class="s1">&#39;length&#39;</span><span class="p">]]</span> <span class="o">=</span> <span class="n">read_sep</span>
+
+        <span class="n">pileup_row</span> <span class="o">=</span> <span class="n">pileup_row</span><span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="n">pad</span><span class="p">):</span><span class="o">-</span><span class="nb">len</span><span class="p">(</span><span class="n">pad</span><span class="p">)]</span>
+    <span class="k">return</span> <span class="n">pileup_row</span></div>
+
+
+<div class="viewcode-block" id="reindex_labels"><a class="viewcode-back" href="../../medaka.html#medaka.tview.reindex_labels">[docs]</a><span class="k">def</span> <span class="nf">reindex_labels</span><span class="p">(</span><span class="n">truth</span><span class="p">,</span> <span class="n">new_positions</span><span class="p">,</span> <span class="n">max_label_len</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Generate labels from a truth pileup and positions (of some other</span>
+<span class="sd">    pileup).</span>
+
+<span class="sd">    :param truth: `Pileup` object</span>
+<span class="sd">    :param pileups: list of `Pileup` objects</span>
+<span class="sd">    :param new_positions: structured array of new positions with &#39;major&#39; and</span>
+<span class="sd">        &#39;minor&#39; fields.</span>
+<span class="sd">    :param max_label_len: int, where we have no evidence in the pileup (and</span>
+<span class="sd">        hence ref) for a base which is present in the truth, we want the</span>
+<span class="sd">        label for the previous base to include the missing bases up to</span>
+<span class="sd">        `max_label_len`.</span>
+
+<span class="sd">    :returns: np.array of labels</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># get common index of truth and reads</span>
+    <span class="n">all_pos</span> <span class="o">=</span> <span class="n">get_common_index</span><span class="p">((</span><span class="n">new_positions</span><span class="p">,</span> <span class="n">truth</span><span class="o">.</span><span class="n">positions</span><span class="p">))</span>
+
+    <span class="c1"># reindex truth to common index</span>
+    <span class="n">truth</span> <span class="o">=</span> <span class="n">reindex_pileup</span><span class="p">(</span><span class="n">truth</span><span class="p">,</span> <span class="n">all_pos</span><span class="p">)</span>
+    <span class="n">labels</span> <span class="o">=</span> <span class="n">truth</span><span class="o">.</span><span class="n">reads</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">labels</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="n">labels</span> <span class="o">=</span> <span class="p">[</span><span class="n">decoding</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">labels</span><span class="p">]</span>
+
+    <span class="c1"># Where we have no evidence in the pileup (and hence ref draft assembly)</span>
+    <span class="c1"># for a base which is present in the truth, we want the label for the</span>
+    <span class="c1"># previous base to include the missing bases. When this happens,</span>
+    <span class="c1"># we will have a truth minor position not present in the reads.</span>
+
+    <span class="c1"># Create index of pileup</span>
+    <span class="n">pileup_index</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">Index</span><span class="p">(</span><span class="n">new_positions</span><span class="p">)</span>
+    <span class="n">labels</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">labels</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="n">all_pos</span><span class="p">)</span>
+    <span class="c1"># loop over minor positions in truth</span>
+    <span class="k">for</span> <span class="p">(</span><span class="n">major</span><span class="p">,</span> <span class="n">minor</span><span class="p">)</span> <span class="ow">in</span> <span class="n">truth</span><span class="o">.</span><span class="n">positions</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">truth</span><span class="o">.</span><span class="n">positions</span><span class="p">[</span><span class="s1">&#39;minor&#39;</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)]:</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">major</span><span class="p">,</span> <span class="n">minor</span><span class="p">)</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">pileup_index</span><span class="p">:</span>
+            <span class="c1"># Append this (additional) label to previous and remove</span>
+            <span class="n">labels</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="n">labels</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">get_loc</span><span class="p">((</span><span class="n">major</span><span class="p">,</span> <span class="mi">0</span><span class="p">))]</span> <span class="o">+=</span> <span class="n">labels</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="n">labels</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">get_loc</span><span class="p">((</span><span class="n">major</span><span class="p">,</span> <span class="n">minor</span><span class="p">))]</span>
+            <span class="n">labels</span><span class="o">.</span><span class="n">drop</span><span class="p">((</span><span class="n">major</span><span class="p">,</span> <span class="n">minor</span><span class="p">),</span> <span class="n">inplace</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="c1"># convert labels to numpy array, truncating labels to max_label_len.</span>
+    <span class="k">if</span> <span class="n">max_label_len</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">max_label_len</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span>
+    <span class="n">labels</span> <span class="o">=</span> <span class="n">labels</span><span class="o">.</span><span class="n">to_records</span><span class="p">(</span><span class="n">index</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="s1">&#39;U</span><span class="si">{}</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">max_label_len</span><span class="p">))</span>
+    <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">labels</span><span class="p">)</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">new_positions</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">labels</span></div>
+
+
+<div class="viewcode-block" id="generate_pileup_chunks"><a class="viewcode-back" href="../../medaka.html#medaka.tview.generate_pileup_chunks">[docs]</a><span class="k">def</span> <span class="nf">generate_pileup_chunks</span><span class="p">(</span><span class="n">bams</span><span class="p">,</span> <span class="n">ref_fasta</span><span class="p">,</span> <span class="n">ref_name</span><span class="p">,</span> <span class="n">start</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                           <span class="n">chunk_len</span><span class="o">=</span><span class="mi">50000</span><span class="p">,</span> <span class="n">overlap</span><span class="o">=</span><span class="mi">1000</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Yield chunks of pileup(s).</span>
+
+<span class="sd">    :param bams: iterable of input .bam files.</span>
+<span class="sd">    :param ref_fasta: input .fasta file.</span>
+<span class="sd">    :param ref_name: name of reference within .bam to parse.</span>
+<span class="sd">    :param start: start reference coordinate.</span>
+<span class="sd">    :param end: end reference coordinate. If `None` the full extent of</span>
+<span class="sd">        the reference will be parsed.</span>
+<span class="sd">    :param chunk_len: int, chunk length in reference coordinates.</span>
+<span class="sd">    :param overlap: int, overlap of adjacent chunks in reference coordinates.</span>
+
+<span class="sd">    :yields: (tuple `Pileup` objects, None)</span>
+
+<span class="sd">    ..note:: the None in the yielded values is for compatibility with an</span>
+<span class="sd">        old API and will be removed.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">tview</span> <span class="o">=</span> <span class="n">MultiTView</span><span class="p">(</span><span class="n">bams</span><span class="p">,</span> <span class="n">ref_fasta</span><span class="p">,</span> <span class="n">columns</span><span class="o">=</span><span class="n">chunk_len</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">end</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">align_fhs</span> <span class="o">=</span> <span class="p">(</span><span class="n">pysam</span><span class="o">.</span><span class="n">AlignmentFile</span><span class="p">(</span><span class="n">bam</span><span class="p">)</span> <span class="k">for</span> <span class="n">bam</span> <span class="ow">in</span> <span class="n">bams</span><span class="p">)</span>
+        <span class="n">end</span> <span class="o">=</span> <span class="nb">min</span><span class="p">([</span><span class="nb">dict</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">p</span><span class="o">.</span><span class="n">references</span><span class="p">,</span> <span class="n">p</span><span class="o">.</span><span class="n">lengths</span><span class="p">))[</span><span class="n">ref_name</span><span class="p">]</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">align_fhs</span><span class="p">])</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Chunking </span><span class="si">{}</span><span class="s2">: </span><span class="si">{}</span><span class="s2">-</span><span class="si">{}</span><span class="s2"> in chunks of </span><span class="si">{}</span><span class="s2"> overlapping by </span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">ref_name</span><span class="p">,</span> <span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">,</span> <span class="n">chunk_len</span><span class="p">,</span> <span class="n">overlap</span><span class="p">))</span>
+
+    <span class="c1">#TODO: we could change how this is done since the class could cache</span>
+    <span class="c1">#      everything in the entire region of interest.</span>
+    <span class="k">for</span> <span class="n">chunk_start</span><span class="p">,</span> <span class="n">chunk_end</span> <span class="ow">in</span> <span class="n">segment_limits</span><span class="p">(</span><span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">,</span> <span class="n">segment_len</span><span class="o">=</span><span class="n">chunk_len</span><span class="p">,</span> <span class="n">overlap_len</span><span class="o">=</span><span class="n">overlap</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">pileups</span><span class="p">,</span> <span class="n">ref_seq</span> <span class="o">=</span> <span class="n">tview</span><span class="o">.</span><span class="n">pileup</span><span class="p">(</span><span class="n">ref_name</span><span class="p">,</span> <span class="n">chunk_start</span><span class="p">,</span> <span class="n">chunk_end</span><span class="p">)</span>
+        <span class="k">except</span> <span class="n">TViewException</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Skipping region </span><span class="si">{}</span><span class="s2">-</span><span class="si">{}</span><span class="s2"> as TView did not find any reads&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">chunk_start</span><span class="p">,</span> <span class="n">chunk_end</span><span class="p">))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">yield</span> <span class="n">LabelledPileup</span><span class="p">(</span><span class="n">pileups</span><span class="o">=</span><span class="n">pileups</span><span class="p">,</span> <span class="n">labels</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">ref_seq</span><span class="o">=</span><span class="n">ref_seq</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="generate_training_chunks"><a class="viewcode-back" href="../../medaka.html#medaka.tview.generate_training_chunks">[docs]</a><span class="k">def</span> <span class="nf">generate_training_chunks</span><span class="p">(</span><span class="n">truth_bam</span><span class="p">,</span> <span class="n">bams</span><span class="p">,</span> <span class="n">ref_fasta</span><span class="p">,</span> <span class="n">ref_name</span><span class="p">,</span> <span class="n">start</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                             <span class="n">chunk_len</span><span class="o">=</span><span class="mi">50000</span><span class="p">,</span> <span class="n">overlap</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Prepare training data chunks.</span>
+
+<span class="sd">    :param truth_bam: .bam file of truth aligned to ref to generate labels.</span>
+<span class="sd">    :param bams: iterable of input .bam files.</span>
+<span class="sd">    :param ref_fasta: input .fasta file.</span>
+<span class="sd">    :param ref_name: name of reference within .bam to parse.</span>
+<span class="sd">    :param start: start reference coordinate.</span>
+<span class="sd">    :param end: end reference coordinate. If `None` the full extent of</span>
+<span class="sd">        the reference will be parsed.</span>
+<span class="sd">    :param chunk_len: int, chunk length in reference coordinates.</span>
+<span class="sd">    :param overlap: int, overlap of adjacent chunks in reference coordinates.</span>
+
+<span class="sd">    :yields: tuple of `Pileup` objects (one item for each input bam) for each</span>
+<span class="sd">        chunk.</span>
+
+<span class="sd">    .. note:: Chunks might be missing if `truth_bam` is provided and</span>
+<span class="sd">        regions with multiple mappings were encountered.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">tview</span> <span class="o">=</span> <span class="n">MultiTView</span><span class="p">(</span><span class="n">bams</span><span class="p">,</span> <span class="n">ref_fasta</span><span class="p">,</span> <span class="n">columns</span><span class="o">=</span><span class="n">chunk_len</span><span class="p">)</span>
+
+    <span class="c1"># filter truth alignments to restrict ourselves to regions of the ref where the truth</span>
+    <span class="c1"># in unambiguous</span>
+    <span class="n">alignments</span> <span class="o">=</span> <span class="n">TruthAlignment</span><span class="o">.</span><span class="n">bam_to_alignments</span><span class="p">(</span><span class="n">truth_bam</span><span class="p">,</span> <span class="n">ref_name</span><span class="p">,</span> <span class="n">start</span><span class="o">=</span><span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="n">end</span><span class="p">)</span>
+    <span class="n">filtered_alignments</span> <span class="o">=</span> <span class="n">TruthAlignment</span><span class="o">.</span><span class="n">filter_alignments</span><span class="p">(</span><span class="n">alignments</span><span class="p">,</span> <span class="n">start</span><span class="o">=</span><span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="n">end</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">filtered_alignments</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">&quot;Filtering removed all alignments of truth to ref, cannot continue.&quot;</span><span class="p">)</span>
+
+    <span class="k">for</span> <span class="n">aln</span> <span class="ow">in</span> <span class="n">filtered_alignments</span><span class="p">:</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="s2">&quot;Chunking </span><span class="si">{}</span><span class="s2">: </span><span class="si">{}</span><span class="s2">-</span><span class="si">{}</span><span class="s2"> in chunks of </span><span class="si">{}</span><span class="s2"> overlapping by </span><span class="si">{}</span><span class="s2">&quot;</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">ref_name</span><span class="p">,</span> <span class="n">aln</span><span class="o">.</span><span class="n">start</span><span class="p">,</span> <span class="n">aln</span><span class="o">.</span><span class="n">end</span><span class="p">,</span> <span class="n">chunk_len</span><span class="p">,</span> <span class="n">overlap</span><span class="p">))</span>
+
+        <span class="k">for</span> <span class="n">chunk_start</span><span class="p">,</span> <span class="n">chunk_end</span> <span class="ow">in</span> <span class="n">segment_limits</span><span class="p">(</span><span class="n">aln</span><span class="o">.</span><span class="n">start</span><span class="p">,</span> <span class="n">aln</span><span class="o">.</span><span class="n">end</span><span class="p">,</span> <span class="n">segment_len</span><span class="o">=</span><span class="n">chunk_len</span><span class="p">,</span> <span class="n">overlap_len</span><span class="o">=</span><span class="n">overlap</span><span class="p">):</span>
+            <span class="n">truth_chunk</span> <span class="o">=</span> <span class="n">aln</span><span class="o">.</span><span class="n">get_positions_and_labels</span><span class="p">(</span><span class="n">start</span><span class="o">=</span><span class="n">chunk_start</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="n">chunk_end</span><span class="p">)</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">pileups</span><span class="p">,</span> <span class="n">ref_seq</span> <span class="o">=</span> <span class="n">tview</span><span class="o">.</span><span class="n">pileup</span><span class="p">(</span><span class="n">ref_name</span><span class="p">,</span> <span class="n">chunk_start</span><span class="p">,</span> <span class="n">chunk_end</span><span class="p">)</span>
+            <span class="k">except</span> <span class="n">TViewException</span><span class="p">:</span>
+                <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Skipping region </span><span class="si">{}</span><span class="s2">-</span><span class="si">{}</span><span class="s2"> as TView did not find any reads&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">chunk_start</span><span class="p">,</span> <span class="n">chunk_end</span><span class="p">))</span>
+                <span class="k">continue</span>
+
+            <span class="k">assert</span> <span class="n">truth_chunk</span><span class="o">.</span><span class="n">positions</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="s1">&#39;major&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="n">pileups</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">positions</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="s1">&#39;major&#39;</span><span class="p">]</span>
+            <span class="k">assert</span> <span class="n">truth_chunk</span><span class="o">.</span><span class="n">positions</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">][</span><span class="s1">&#39;major&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="n">pileups</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">positions</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">][</span><span class="s1">&#39;major&#39;</span><span class="p">]</span>
+
+            <span class="c1"># Create labels according to positions in pileup</span>
+            <span class="n">t0</span> <span class="o">=</span> <span class="n">now</span><span class="p">()</span>
+            <span class="n">labels</span> <span class="o">=</span> <span class="n">reindex_labels</span><span class="p">(</span><span class="n">truth_chunk</span><span class="p">,</span> <span class="n">pileups</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">positions</span><span class="p">)</span>
+            <span class="n">t1</span> <span class="o">=</span> <span class="n">now</span><span class="p">()</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Processed labels for </span><span class="si">{}</span><span class="s2">-</span><span class="si">{}</span><span class="s2"> </span><span class="se">\t</span><span class="s2">(</span><span class="si">{:.3f}</span><span class="s2">s)&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">chunk_start</span><span class="p">,</span> <span class="n">chunk_end</span><span class="p">,</span> <span class="n">t1</span> <span class="o">-</span> <span class="n">t0</span><span class="p">))</span>
+
+            <span class="k">yield</span> <span class="n">LabelledPileup</span><span class="p">(</span><span class="n">pileups</span><span class="o">=</span><span class="n">pileups</span><span class="p">,</span> <span class="n">labels</span><span class="o">=</span><span class="n">labels</span><span class="p">,</span> <span class="n">ref_seq</span><span class="o">=</span><span class="n">ref_seq</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="load_pileup"><a class="viewcode-back" href="../../medaka.html#medaka.tview.load_pileup">[docs]</a><span class="k">def</span> <span class="nf">load_pileup</span><span class="p">(</span><span class="n">pileup_hdf</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Load hdf pileup yielding chunks of pileup.</span>
+
+<span class="sd">    :param hdf: input .hdf file.</span>
+
+<span class="sd">    :yields: `(pileups, labels)` for each chunk;</span>
+<span class="sd">        `pileups`: a list of `Pileup` objects</span>
+<span class="sd">        `labels`: array of truth labels or `None`.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1">#TODO: decide whether this should be for training only (i.e. always with truth labels)</span>
+
+    <span class="n">data_types</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">with</span> <span class="n">h5py</span><span class="o">.</span><span class="n">File</span><span class="p">(</span><span class="n">pileup_hdf</span><span class="p">,</span> <span class="s1">&#39;r&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">hdf</span><span class="p">:</span>
+        <span class="c1"># hdf file should have pileups for each data type in /&lt;ref&gt;_&lt;start&gt;_&lt;end&lt;/datatype&lt;N&gt;/data</span>
+        <span class="c1"># and labels in /&lt;ref&gt;_&lt;start&gt;_&lt;end&lt;/labels</span>
+        <span class="k">for</span> <span class="n">chunk_str</span> <span class="ow">in</span> <span class="n">hdf</span><span class="p">:</span>  <span class="c1"># pileup_&lt;start&gt;_&lt;end&gt;</span>
+
+            <span class="k">if</span> <span class="s1">&#39;labels&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">hdf</span><span class="p">[</span><span class="n">chunk_str</span><span class="p">]:</span>
+                <span class="n">labels</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">labels</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">char</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="n">hdf</span><span class="p">[</span><span class="n">chunk_str</span><span class="p">][</span><span class="s1">&#39;labels&#39;</span><span class="p">][()])</span>
+
+            <span class="k">if</span> <span class="s1">&#39;ref_seq&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">hdf</span><span class="p">[</span><span class="n">chunk_str</span><span class="p">]:</span>
+                <span class="n">ref_seq</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">ref_seq</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">char</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="n">hdf</span><span class="p">[</span><span class="n">chunk_str</span><span class="p">][</span><span class="s1">&#39;ref_seq&#39;</span><span class="p">][()])</span>
+
+            <span class="k">if</span> <span class="n">data_types</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">data_types</span> <span class="o">=</span> <span class="p">[</span><span class="n">d</span> <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">hdf</span><span class="p">[</span><span class="n">chunk_str</span><span class="p">]</span> <span class="k">if</span> <span class="n">d</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s1">&#39;datatype&#39;</span><span class="p">)]</span>
+
+            <span class="n">pileups</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">for</span> <span class="n">dtype</span> <span class="ow">in</span> <span class="n">data_types</span><span class="p">:</span>
+                <span class="n">grp</span> <span class="o">=</span> <span class="n">hdf</span><span class="p">[</span><span class="n">chunk_str</span><span class="p">][</span><span class="n">dtype</span><span class="p">]</span>
+                <span class="n">ref_name</span> <span class="o">=</span> <span class="n">grp</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;rname&#39;</span><span class="p">]</span>
+                <span class="n">bam</span> <span class="o">=</span> <span class="n">grp</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;bam&#39;</span><span class="p">]</span>
+                <span class="n">reads</span> <span class="o">=</span> <span class="n">grp</span><span class="p">[</span><span class="s1">&#39;data&#39;</span><span class="p">][()]</span>
+                <span class="n">positions</span> <span class="o">=</span> <span class="n">grp</span><span class="p">[</span><span class="s1">&#39;positions&#39;</span><span class="p">][()]</span>
+                <span class="n">pileups</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">Pileup</span><span class="p">(</span><span class="n">bam</span><span class="p">,</span> <span class="n">ref_name</span><span class="p">,</span> <span class="n">reads</span><span class="p">,</span> <span class="n">positions</span><span class="p">))</span>
+
+            <span class="k">yield</span> <span class="n">LabelledPileup</span><span class="p">(</span><span class="n">pileups</span><span class="o">=</span><span class="n">pileups</span><span class="p">,</span> <span class="n">labels</span><span class="o">=</span><span class="n">labels</span><span class="p">,</span> <span class="n">ref_seq</span><span class="o">=</span><span class="n">ref_seq</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="rechunk"><a class="viewcode-back" href="../../medaka.html#medaka.tview.rechunk">[docs]</a><span class="k">def</span> <span class="nf">rechunk</span><span class="p">(</span><span class="n">pileup_gen</span><span class="p">,</span> <span class="n">chunk_size</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span> <span class="n">overlap</span><span class="o">=</span><span class="mi">200</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Rechunk chunks of pileup into smaller overlapping chunks.</span>
+
+<span class="sd">    :param pileup_gen: generator of (pileups, labels);</span>
+<span class="sd">        pileups: a list of `Pileup` objects</span>
+<span class="sd">        labels: array of truth labels or `None`.</span>
+<span class="sd">    :yields: (pileups, labels)</span>
+<span class="sd">        pileups: a list of `Pileup` objects</span>
+<span class="sd">        labels: array of truth labels or `None`.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">chunker</span> <span class="o">=</span> <span class="n">functools</span><span class="o">.</span><span class="n">partial</span><span class="p">(</span><span class="n">sliding_window</span><span class="p">,</span> <span class="n">window</span><span class="o">=</span><span class="n">chunk_size</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="n">chunk_size</span><span class="o">-</span><span class="n">overlap</span><span class="p">,</span> <span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Rechunking into chunks of </span><span class="si">{}</span><span class="s2"> columns each overlapping by </span><span class="si">{}</span><span class="s2"> columns.&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">chunk_size</span><span class="p">,</span> <span class="n">overlap</span><span class="p">))</span>
+
+    <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">pileup_gen</span><span class="p">:</span>
+
+        <span class="n">read_chunkers</span> <span class="o">=</span> <span class="p">[</span><span class="n">chunker</span><span class="p">(</span><span class="n">p</span><span class="o">.</span><span class="n">reads</span><span class="p">)</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">c</span><span class="o">.</span><span class="n">pileups</span><span class="p">]</span>
+        <span class="c1"># all pileups should have same positions so we just use first</span>
+        <span class="n">pos_chunker</span> <span class="o">=</span> <span class="n">chunker</span><span class="p">(</span><span class="n">c</span><span class="o">.</span><span class="n">pileups</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">positions</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">c</span><span class="o">.</span><span class="n">labels</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">labels_gen</span> <span class="o">=</span> <span class="n">itertools</span><span class="o">.</span><span class="n">repeat</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">labels_gen</span> <span class="o">=</span> <span class="n">chunker</span><span class="p">(</span><span class="n">c</span><span class="o">.</span><span class="n">labels</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">c</span><span class="o">.</span><span class="n">ref_seq</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">ref_seq_gen</span> <span class="o">=</span> <span class="n">itertools</span><span class="o">.</span><span class="n">repeat</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">ref_seq_gen</span> <span class="o">=</span> <span class="n">chunker</span><span class="p">(</span><span class="n">c</span><span class="o">.</span><span class="n">ref_seq</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">pos</span> <span class="ow">in</span> <span class="n">pos_chunker</span><span class="p">:</span>
+            <span class="n">chunk_labels</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="n">labels_gen</span><span class="p">)</span>
+            <span class="n">chunk_ref_seq</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="n">ref_seq_gen</span><span class="p">)</span>
+            <span class="n">chunk_pileups</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">([</span><span class="n">Pileup</span><span class="p">(</span><span class="n">p</span><span class="o">.</span><span class="n">bam</span><span class="p">,</span> <span class="n">p</span><span class="o">.</span><span class="n">ref_name</span><span class="p">,</span> <span class="nb">next</span><span class="p">(</span><span class="n">rc</span><span class="p">),</span> <span class="n">pos</span><span class="p">)</span> <span class="k">for</span> <span class="n">p</span><span class="p">,</span> <span class="n">rc</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">c</span><span class="o">.</span><span class="n">pileups</span><span class="p">,</span> <span class="n">read_chunkers</span><span class="p">)])</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="s2">&quot;Chunking positions </span><span class="si">{}</span><span class="s2">:</span><span class="si">{}</span><span class="s2"> (</span><span class="si">{}</span><span class="s2"> bases)&quot;</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">pos</span><span class="p">[</span><span class="s1">&#39;major&#39;</span><span class="p">][</span><span class="mi">0</span><span class="p">],</span> <span class="n">pos</span><span class="p">[</span><span class="s1">&#39;major&#39;</span><span class="p">][</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="nb">len</span><span class="p">(</span><span class="n">pos</span><span class="p">)))</span>
+            <span class="k">yield</span> <span class="n">LabelledPileup</span><span class="p">(</span><span class="n">pileups</span><span class="o">=</span><span class="n">chunk_pileups</span><span class="p">,</span> <span class="n">labels</span><span class="o">=</span><span class="n">chunk_labels</span><span class="p">,</span> <span class="n">ref_seq</span><span class="o">=</span><span class="n">chunk_ref_seq</span><span class="p">)</span></div>
+</pre></div>
+
+           </div>
+           
+          </div>
+          <footer>
+  
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>
+        &copy; Copyright 2017, Oxford Nanopore Technologies.
+
+    </p>
+  </div>
+  Built with <a href="http://sphinx-doc.org/">Sphinx</a> using a <a href="https://github.com/rtfd/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>. 
+
+</footer>
+
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+  
+
+
+  
+
+    <script type="text/javascript">
+        var DOCUMENTATION_OPTIONS = {
+            URL_ROOT:'../../',
+            VERSION:'0.3.0',
+            LANGUAGE:'None',
+            COLLAPSE_INDEX:false,
+            FILE_SUFFIX:'.html',
+            HAS_SOURCE:  true,
+            SOURCELINK_SUFFIX: '.txt'
+        };
+    </script>
+      <script type="text/javascript" src="../../_static/jquery.js"></script>
+      <script type="text/javascript" src="../../_static/underscore.js"></script>
+      <script type="text/javascript" src="../../_static/doctools.js"></script>
+      <script type="text/javascript" src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+
+  
+
+  <script type="text/javascript" src="../../_static/js/theme.js"></script>
+
+  <script type="text/javascript">
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

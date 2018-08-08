@@ -1,0 +1,78 @@
+medaka package
+==============
+
+Submodules
+----------
+
+medaka.common module
+--------------------
+
+.. automodule:: medaka.common
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+medaka.compress module
+----------------------
+
+.. automodule:: medaka.compress
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+medaka.features module
+----------------------
+
+.. automodule:: medaka.features
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+medaka.inference module
+-----------------------
+
+.. automodule:: medaka.inference
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+medaka.labels module
+--------------------
+
+.. automodule:: medaka.labels
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+medaka.medaka module
+--------------------
+
+.. automodule:: medaka.medaka
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+medaka.stitch module
+--------------------
+
+.. automodule:: medaka.stitch
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+medaka.tview module
+-------------------
+
+.. automodule:: medaka.tview
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+
+Module contents
+---------------
+
+.. automodule:: medaka
+    :members:
+    :undoc-members:
+    :show-inheritance:

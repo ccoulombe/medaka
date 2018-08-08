@@ -1,0 +1,347 @@
+
+
+<!DOCTYPE html>
+<!--[if IE 8]><html class="no-js lt-ie9" lang="en" > <![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en" > <!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <title>medaka.features &mdash; Medaka 0.3.0 documentation</title>
+  
+
+  
+  
+  
+  
+
+  
+
+  
+  
+    
+
+  
+
+  <link rel="stylesheet" href="../../_static/css/theme.css" type="text/css" />
+  <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+
+  
+  <script src="../../_static/js/modernizr.min.js"></script>
+
+</head>
+
+<body class="wy-body-for-nav">
+
+   
+  <div class="wy-grid-for-nav">
+
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search">
+          
+
+          
+            <a href="../../index.html" class="icon icon-home"> Medaka
+          
+
+          
+          </a>
+
+          
+            
+            
+              <div class="version">
+                0.3.0
+              </div>
+            
+          
+
+          
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+
+          
+        </div>
+
+        <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+          
+            
+            
+              
+            
+            
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../benchmarks.html">Benchmarks</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../walkthrough.html">Walkthrough</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../development.html">Development</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../future.html">History and Future Directions</a></li>
+</ul>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../medaka.html">medaka package</a></li>
+</ul>
+
+            
+          
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" aria-label="top navigation">
+        
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">Medaka</a>
+        
+      </nav>
+
+
+      <div class="wy-nav-content">
+        
+        <div class="rst-content">
+        
+          
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div role="navigation" aria-label="breadcrumbs navigation">
+
+  <ul class="wy-breadcrumbs">
+    
+      <li><a href="../../index.html">Docs</a> &raquo;</li>
+        
+          <li><a href="../index.html">Module code</a> &raquo;</li>
+        
+      <li>medaka.features</li>
+    
+    
+      <li class="wy-breadcrumbs-aside">
+        
+      </li>
+    
+  </ul>
+
+  
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+            
+  <h1>Source code for medaka.features</h1><div class="highlight"><pre>
+<span></span><span class="kn">from</span> <span class="nn">collections</span> <span class="k">import</span> <span class="n">defaultdict</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+
+<span class="kn">from</span> <span class="nn">medaka.common</span> <span class="k">import</span> <span class="n">_read_sep_</span><span class="p">,</span> <span class="n">decoding</span><span class="p">,</span> <span class="n">encoding</span><span class="p">,</span> <span class="n">Pileup</span><span class="p">,</span> <span class="n">LabelledPileup</span>
+<span class="kn">import</span> <span class="nn">logging</span>
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="pcnt_gap_filter"><a class="viewcode-back" href="../../medaka.html#medaka.features.pcnt_gap_filter">[docs]</a><span class="k">def</span> <span class="nf">pcnt_gap_filter</span><span class="p">(</span><span class="n">pileup_gen</span><span class="p">,</span> <span class="n">depth</span><span class="o">=</span><span class="mi">15</span><span class="p">,</span> <span class="n">max_pcnt_gap</span><span class="o">=</span><span class="mf">20.0</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Sort rows by number of alignment separators (fewest at top), remove any</span>
+<span class="sd">    with more than `max_pcnt_gap` percent gap values, and return</span>
+<span class="sd">    `depth` rows (or all rows if `depth` is None), skipping chunks with insufficient depth.</span>
+
+<span class="sd">    :param pileup_gen: generator of `LabelledPileup` named tuples.</span>
+<span class="sd">    :param depth: int, number of rows to return (if None, return all rows).</span>
+<span class="sd">    :param min_depth: int, chunks with insufficient depth at any position will not be yielded.</span>
+<span class="sd">    :param max_pcnt_gap: float, upper limit of percentage gaps per row tolerated.</span>
+
+<span class="sd">    :yields: `LabelledPileup` named tuples.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Coverage filter: depth: </span><span class="si">{}</span><span class="s2"> max_pcnt_gap: </span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">depth</span><span class="p">,</span> <span class="n">max_pcnt_gap</span><span class="p">))</span>
+    <span class="n">sep</span> <span class="o">=</span> <span class="n">encoding</span><span class="p">[</span><span class="n">_read_sep_</span><span class="p">]</span>
+    <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">pileup_gen</span><span class="p">:</span>
+        <span class="n">deep_enough</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="n">filtered</span> <span class="o">=</span> <span class="p">[]</span>  <span class="c1"># list of filtered pileups</span>
+        <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">c</span><span class="o">.</span><span class="n">pileups</span><span class="p">:</span>
+            <span class="n">row_cnts</span> <span class="o">=</span> <span class="p">[</span><span class="n">defaultdict</span><span class="p">(</span><span class="nb">int</span><span class="p">,</span> <span class="nb">zip</span><span class="p">(</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">row</span><span class="p">,</span> <span class="n">return_counts</span><span class="o">=</span><span class="kc">True</span><span class="p">)))</span> <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">p</span><span class="o">.</span><span class="n">reads</span><span class="p">]</span>
+            <span class="n">gaps_per_row</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">c</span><span class="p">[</span><span class="n">sep</span><span class="p">]</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">row_cnts</span><span class="p">])</span>
+            <span class="n">sort_inds</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">gaps_per_row</span><span class="p">)</span>
+            <span class="n">reads</span> <span class="o">=</span> <span class="n">p</span><span class="o">.</span><span class="n">reads</span><span class="p">[</span><span class="n">sort_inds</span><span class="p">]</span>
+            <span class="k">if</span> <span class="n">max_pcnt_gap</span> <span class="o">&lt;</span> <span class="mf">100.0</span><span class="p">:</span>
+                <span class="n">max_n_gaps</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">p</span><span class="o">.</span><span class="n">reads</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">*</span> <span class="n">max_pcnt_gap</span><span class="o">/</span><span class="mf">100.0</span><span class="p">)</span>
+                <span class="n">gaps_per_row</span> <span class="o">=</span> <span class="n">gaps_per_row</span><span class="p">[</span><span class="n">sort_inds</span><span class="p">]</span>
+                <span class="n">cut_i</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">searchsorted</span><span class="p">(</span><span class="n">gaps_per_row</span><span class="p">,</span> <span class="n">max_n_gaps</span><span class="p">,</span> <span class="n">side</span><span class="o">=</span><span class="s1">&#39;right&#39;</span><span class="p">)</span>
+                <span class="n">reads</span> <span class="o">=</span> <span class="n">reads</span><span class="p">[:</span><span class="n">cut_i</span><span class="p">]</span>
+            <span class="k">if</span> <span class="n">depth</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">reads</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">depth</span><span class="p">:</span>
+                <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Skipping </span><span class="si">{}</span><span class="s2">-</span><span class="si">{}</span><span class="s2"> due to lack of depth.&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">p</span><span class="o">.</span><span class="n">positions</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">p</span><span class="o">.</span><span class="n">positions</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]))</span>
+                <span class="n">deep_enough</span> <span class="o">=</span> <span class="kc">False</span>
+                <span class="k">break</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">reads</span> <span class="o">=</span> <span class="n">reads</span><span class="p">[:</span><span class="n">depth</span><span class="p">]</span>
+            <span class="n">filtered</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">Pileup</span><span class="p">(</span><span class="n">p</span><span class="o">.</span><span class="n">bam</span><span class="p">,</span> <span class="n">p</span><span class="o">.</span><span class="n">ref_name</span><span class="p">,</span> <span class="n">reads</span><span class="p">,</span> <span class="n">p</span><span class="o">.</span><span class="n">positions</span><span class="p">))</span>
+        <span class="k">if</span> <span class="n">deep_enough</span><span class="p">:</span>
+            <span class="k">yield</span> <span class="n">LabelledPileup</span><span class="p">(</span><span class="n">pileups</span><span class="o">=</span><span class="n">filtered</span><span class="p">,</span> <span class="n">labels</span><span class="o">=</span><span class="n">c</span><span class="o">.</span><span class="n">labels</span><span class="p">,</span> <span class="n">ref_seq</span><span class="o">=</span><span class="n">c</span><span class="o">.</span><span class="n">ref_seq</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="depth_filter"><a class="viewcode-back" href="../../medaka.html#medaka.features.depth_filter">[docs]</a><span class="k">def</span> <span class="nf">depth_filter</span><span class="p">(</span><span class="n">pileup_gen</span><span class="p">,</span> <span class="n">min_depth</span><span class="o">=</span><span class="mi">15</span><span class="p">,</span> <span class="n">max_depth</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Calculate depth (excluding gaps) at every position and skip chunks with depth &lt; `min_depth`.</span>
+
+<span class="sd">    :param pileup_gen: generator of `LabelledPileup` named tuples.</span>
+<span class="sd">    :param min_depth: int, chunks with insufficient depth at any position will not be yielded.</span>
+<span class="sd">    :param max_depth: int, chunks with excessive depth at any position will not be yielded.</span>
+
+<span class="sd">    :yields: `LabelledPileup` named tuples.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Depth filter: min_depth: </span><span class="si">{}</span><span class="s2"> max_depth: </span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">min_depth</span><span class="p">,</span> <span class="n">max_depth</span><span class="p">))</span>
+    <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">pileup_gen</span><span class="p">:</span>
+        <span class="n">depths</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">counts</span><span class="p">(</span><span class="n">c</span><span class="o">.</span><span class="n">pileups</span><span class="p">),</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">is_too_deep</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">depths</span> <span class="o">&gt;</span> <span class="n">max_depth</span><span class="p">)</span>
+        <span class="n">is_too_shallow</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">depths</span> <span class="o">&lt;</span> <span class="n">min_depth</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="n">is_too_deep</span> <span class="ow">or</span> <span class="n">is_too_shallow</span><span class="p">):</span>
+            <span class="k">yield</span> <span class="n">c</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">pos</span> <span class="o">=</span> <span class="n">c</span><span class="o">.</span><span class="n">pileups</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">positions</span>
+            <span class="k">if</span> <span class="n">is_too_deep</span><span class="p">:</span>
+                <span class="n">msg</span> <span class="o">=</span> <span class="s2">&quot;Skipping </span><span class="si">{}</span><span class="s2">:</span><span class="si">{}</span><span class="s2">-</span><span class="si">{}</span><span class="s2"> due to excessive depth (</span><span class="si">{}</span><span class="s2">).&quot;</span>
+                <span class="n">d</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">depths</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">msg</span> <span class="o">=</span> <span class="s2">&quot;Skipping </span><span class="si">{}</span><span class="s2">:</span><span class="si">{}</span><span class="s2">-</span><span class="si">{}</span><span class="s2"> due to low depth (</span><span class="si">{}</span><span class="s2">).&quot;</span>
+                <span class="n">d</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">depths</span><span class="p">)</span>
+            <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">c</span><span class="o">.</span><span class="n">pileups</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">ref_name</span><span class="p">,</span> <span class="n">pos</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">pos</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">d</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="alphabet_filter"><a class="viewcode-back" href="../../medaka.html#medaka.features.alphabet_filter">[docs]</a><span class="k">def</span> <span class="nf">alphabet_filter</span><span class="p">(</span><span class="n">pileup_gen</span><span class="p">,</span> <span class="n">alphabet</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">filter_labels</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">filter_ref_seq</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Skip chunks in which labels and/or ref_seq contain bases not in `alphabet`.</span>
+
+<span class="sd">    :param pileup_gen: generator of `LabelledPileup` named tuples.</span>
+<span class="sd">    :param alphabet: set of str of allowed bases. If None, automatically generated from decoding.</span>
+<span class="sd">    :param filter_labels: bool, whether to filter on labels.</span>
+<span class="sd">    :param filter_ref_seq: bool, whether to filter on ref_seq.</span>
+
+<span class="sd">    :yields: `LabelledPileup` named tuples.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">alphabet</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">alphabet</span> <span class="o">=</span> <span class="nb">set</span><span class="p">([</span><span class="n">c</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">decoding</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">_read_sep_</span><span class="p">,</span><span class="s1">&#39;&#39;</span><span class="p">)])</span>
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Alphabet filter: alphabet: </span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">alphabet</span><span class="p">))</span>
+
+    <span class="k">def</span> <span class="nf">_find_bad_bases</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="n">field</span><span class="p">,</span> <span class="n">alphabet</span><span class="p">):</span>
+        <span class="c1"># Labels could contain multi-labels e.g. [&#39;G&#39;, &#39;TG&#39;, &#39;CCA&#39;]</span>
+        <span class="n">field_bases</span> <span class="o">=</span> <span class="nb">set</span><span class="p">((</span><span class="n">i</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="s1">&#39;&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">i</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="n">field</span><span class="p">))))</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">field_bases</span><span class="o">.</span><span class="n">issubset</span><span class="p">(</span><span class="n">alphabet</span><span class="p">):</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="s2">&quot;Skipping </span><span class="si">{}</span><span class="s2">:</span><span class="si">{}</span><span class="s2"> (</span><span class="si">{}</span><span class="s2"> bases) due to </span><span class="si">{}</span><span class="s2"> </span><span class="si">{}</span><span class="s2">&quot;</span>
+            <span class="n">pos</span> <span class="o">=</span> <span class="n">c</span><span class="o">.</span><span class="n">pileups</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">positions</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">pos</span><span class="p">[</span><span class="s1">&#39;major&#39;</span><span class="p">][</span><span class="mi">0</span><span class="p">],</span> <span class="n">pos</span><span class="p">[</span><span class="s1">&#39;major&#39;</span><span class="p">][</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span>
+                                    <span class="nb">len</span><span class="p">(</span><span class="n">pos</span><span class="p">),</span> <span class="n">field</span><span class="p">,</span> <span class="n">field_bases</span><span class="o">.</span><span class="n">difference</span><span class="p">(</span><span class="n">alphabet</span><span class="p">)))</span>
+            <span class="k">return</span> <span class="kc">True</span>
+
+    <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">pileup_gen</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">filter_labels</span> <span class="ow">and</span> <span class="n">c</span><span class="o">.</span><span class="n">labels</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">_find_bad_bases</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="s1">&#39;labels&#39;</span><span class="p">,</span> <span class="n">alphabet</span><span class="p">):</span>
+            <span class="k">continue</span>
+        <span class="k">if</span> <span class="n">filter_ref_seq</span> <span class="ow">and</span> <span class="n">c</span><span class="o">.</span><span class="n">ref_seq</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">_find_bad_bases</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="s1">&#39;ref_seq&#39;</span><span class="p">,</span> <span class="n">alphabet</span><span class="p">):</span>
+            <span class="k">continue</span>
+        <span class="k">yield</span> <span class="n">c</span></div>
+
+
+<div class="viewcode-block" id="counts"><a class="viewcode-back" href="../../medaka.html#medaka.features.counts">[docs]</a><span class="k">def</span> <span class="nf">counts</span><span class="p">(</span><span class="n">pileups</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Get counts features for a pileup.</span>
+
+<span class="sd">    :param pileups: iterable of `Pileup` objects</span>
+
+<span class="sd">    :returns: np.array of counts features</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># we don&#39;t want to a count _read_sep_ in our counts feature</span>
+    <span class="n">symbols</span> <span class="o">=</span> <span class="p">[</span><span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">encoding</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">k</span> <span class="o">!=</span> <span class="n">_read_sep_</span><span class="p">]</span>
+    <span class="n">n_features</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">pileups</span><span class="p">)</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="n">symbols</span><span class="p">)</span>
+    <span class="n">chunk_len</span> <span class="o">=</span> <span class="n">pileups</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">reads</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+    <span class="n">counts</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">chunk_len</span><span class="p">,</span> <span class="n">n_features</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">pileups</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">reads</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">p</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">pileups</span><span class="p">):</span>
+        <span class="n">col_cnts</span> <span class="o">=</span> <span class="p">[</span><span class="n">defaultdict</span><span class="p">(</span><span class="nb">int</span><span class="p">,</span> <span class="nb">zip</span><span class="p">(</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">col</span><span class="p">,</span> <span class="n">return_counts</span><span class="o">=</span><span class="kc">True</span><span class="p">)))</span> <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">p</span><span class="o">.</span><span class="n">reads</span><span class="o">.</span><span class="n">T</span><span class="p">]</span>
+        <span class="k">for</span> <span class="n">j</span><span class="p">,</span> <span class="n">s</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">symbols</span><span class="p">):</span>
+            <span class="n">counts</span><span class="p">[:,</span> <span class="n">i</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="n">symbols</span><span class="p">)</span> <span class="o">+</span> <span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="n">c</span><span class="p">[</span><span class="n">s</span><span class="p">]</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">col_cnts</span><span class="p">]</span>
+    <span class="k">return</span> <span class="n">counts</span></div>
+
+
+<div class="viewcode-block" id="pileup_and_counts"><a class="viewcode-back" href="../../medaka.html#medaka.features.pileup_and_counts">[docs]</a><span class="k">def</span> <span class="nf">pileup_and_counts</span><span class="p">(</span><span class="n">pileups</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Get features comprising pileup and counts.</span>
+
+<span class="sd">    :param pileups: iterable of `Pileup` objects</span>
+
+<span class="sd">    :returns: np.array of counts and pileup features.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">pileup_feature</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">hstack</span><span class="p">([</span><span class="n">p</span><span class="o">.</span><span class="n">reads</span><span class="o">.</span><span class="n">T</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">pileups</span><span class="p">])</span>
+    <span class="n">counts_feature</span> <span class="o">=</span> <span class="n">counts</span><span class="p">(</span><span class="n">pileups</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">hstack</span><span class="p">((</span><span class="n">pileup_feature</span><span class="p">,</span> <span class="n">counts_feature</span><span class="p">))</span></div>
+</pre></div>
+
+           </div>
+           
+          </div>
+          <footer>
+  
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>
+        &copy; Copyright 2017, Oxford Nanopore Technologies.
+
+    </p>
+  </div>
+  Built with <a href="http://sphinx-doc.org/">Sphinx</a> using a <a href="https://github.com/rtfd/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>. 
+
+</footer>
+
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+  
+
+
+  
+
+    <script type="text/javascript">
+        var DOCUMENTATION_OPTIONS = {
+            URL_ROOT:'../../',
+            VERSION:'0.3.0',
+            LANGUAGE:'None',
+            COLLAPSE_INDEX:false,
+            FILE_SUFFIX:'.html',
+            HAS_SOURCE:  true,
+            SOURCELINK_SUFFIX: '.txt'
+        };
+    </script>
+      <script type="text/javascript" src="../../_static/jquery.js"></script>
+      <script type="text/javascript" src="../../_static/underscore.js"></script>
+      <script type="text/javascript" src="../../_static/doctools.js"></script>
+      <script type="text/javascript" src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+
+  
+
+  <script type="text/javascript" src="../../_static/js/theme.js"></script>
+
+  <script type="text/javascript">
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
